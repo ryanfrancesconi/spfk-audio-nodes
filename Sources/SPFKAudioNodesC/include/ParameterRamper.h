@@ -1,12 +1,10 @@
-// Copyright AudioKit. All Rights Reserved. Revision History at
-// http://github.com/AudioKit/AudioKit/
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at
+// https://github.com/ryanfrancesconi/spfk-audio-nodes Heavily based on the AudioKit version. All Rights Reserved.
+// Revision History at http://github.com/AudioKit/AudioKit/
 
 // Utility class to manage DSP parameters which can change value smoothly (be
 // ramped) while rendering, without introducing clicks or other distortion into
 // the signal.
-//
-// Originally based on Apple sample code, but significantly altered by Aurelius
-// Prochazka
 
 #pragma once
 
@@ -38,9 +36,7 @@ class ParameterRamper {
     }
 
   public:
-    ParameterRamper(float value = 0.0f) : changeCounter(0) {
-        setImmediate(value);
-    }
+    ParameterRamper(float value = 0.0f) : changeCounter(0) { setImmediate(value); }
 
     void init() {
         /*

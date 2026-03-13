@@ -1,7 +1,6 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at
-// https://github.com/ryanfrancesconi/spfk-audio Heavily based on the AudioKit
-// version. All Rights Reserved. Revision History at
-// http://github.com/AudioKit/AudioKit/
+// https://github.com/ryanfrancesconi/spfk-audio-nodes Heavily based on the AudioKit version. All Rights Reserved.
+// Revision History at http://github.com/AudioKit/AudioKit/
 
 #pragma once
 
@@ -27,14 +26,12 @@ bool canProcessInPlaceDSP(DSPRef pDSP);
 
 void setBufferDSP(DSPRef pDSP, AudioBufferList *buffer, size_t busIndex);
 
-void allocateRenderResourcesDSP(DSPRef pDSP, uint32_t channelCount,
-                                double sampleRate);
+void allocateRenderResourcesDSP(DSPRef pDSP, uint32_t channelCount, double sampleRate);
 void deallocateRenderResourcesDSP(DSPRef pDSP);
 
 void resetDSP(DSPRef pDSP);
 
-void setParameterValueDSP(DSPRef pDSP, AUParameterAddress address,
-                          AUValue value);
+void setParameterValueDSP(DSPRef pDSP, AUParameterAddress address, AUValue value);
 AUValue getParameterValueDSP(DSPRef pDSP, AUParameterAddress address);
 
 void setBypassDSP(DSPRef pDSP, bool bypassed);

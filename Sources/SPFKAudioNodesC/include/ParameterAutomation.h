@@ -1,5 +1,6 @@
-// Copyright AudioKit. All Rights Reserved. Revision History at
-// http://github.com/AudioKit/AudioKit/
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at
+// https://github.com/ryanfrancesconi/spfk-audio-nodes Heavily based on the AudioKit version. All Rights Reserved.
+// Revision History at http://github.com/AudioKit/AudioKit/
 
 #pragma once
 
@@ -28,9 +29,9 @@ struct AutomationEvent {
 
 /// Returns a render observer block which will apply the automation to the
 /// selected parameter.
-AURenderObserver ParameterAutomationGetRenderObserver(
-    AUParameterAddress address, AUScheduleParameterBlock scheduleParameterBlock,
-    float sampleRate, float startSampleTime,
-    const struct AutomationEvent *events, size_t count);
+AURenderObserver ParameterAutomationGetRenderObserver(AUParameterAddress address,
+                                                      AUScheduleParameterBlock scheduleParameterBlock, float sampleRate,
+                                                      float startSampleTime, const struct AutomationEvent *events,
+                                                      size_t count);
 
 #endif // !__cplusplus

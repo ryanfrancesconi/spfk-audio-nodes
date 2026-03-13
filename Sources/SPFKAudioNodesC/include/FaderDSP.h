@@ -1,7 +1,6 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at
-// https://github.com/ryanfrancesconi/spfk-audio Heavily based on the AudioKit
-// version. All Rights Reserved. Revision History at
-// http://github.com/AudioKit/AudioKit/
+// https://github.com/ryanfrancesconi/spfk-audio-nodes Heavily based on the AudioKit version. All Rights Reserved.
+// Revision History at http://github.com/AudioKit/AudioKit/
 
 #ifndef FaderDSP_h
 #define FaderDSP_h
