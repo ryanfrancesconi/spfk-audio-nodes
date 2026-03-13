@@ -116,8 +116,8 @@ extension Fader {
         $rightGain.ramp(from: start, to: target, duration: duration)
     }
 
-    public func stopAutomation() throws {
-        try $leftGain.stopAutomation()
-        try $rightGain.stopAutomation()
+    public func stopAutomation() {
+        $leftGain.stopAutomation()
+        $rightGain.stopAutomation()
     }
 }

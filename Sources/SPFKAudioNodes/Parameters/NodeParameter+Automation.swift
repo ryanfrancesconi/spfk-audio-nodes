@@ -31,36 +31,13 @@ extension NodeParameter {
     ///   - events: An array of events
     ///   - offset: A time offset into the events
     public func automate(events: [AutomationEvent], offset: TimeInterval) throws {
-        guard let avAudioNode else {
-            throw NSError(description: "Underlying AVAudioNode is nil")
-        }
-
-        guard let engine = avAudioNode.engine else {
-            throw NSError(description: "\(avAudioNode.debugDescription) engine is nil")
-        }
-
-        guard var lastTime = avAudioNode.lastRenderTime else {
-            throw NSError(description: "\(avAudioNode.debugDescription) lastRenderTime is nil")
-        }
-
-        // In manual rendering, we may not have a valid lastRenderTime, so
-        // assume no rendering has yet occurred and start at 0
-        if !lastTime.isSampleTimeValid || engine.isInManualRenderingMode {
-            lastTime = AVAudioTime(
-                sampleTime: 0,
-                atRate: sampleRate
-            )
-        }
-
-        guard lastTime.isSampleTimeValid else {
-            throw NSError(description: "\(avAudioNode.debugDescription) isSampleTimeValid is false")
-        }
+        var startTime = lastRenderTime
 
         if offset != 0 {
-            lastTime = lastTime.offset(seconds: -offset)
+            startTime = startTime.offset(seconds: -offset)
         }
 
-        try automate(events: events, startTime: lastTime)
+        try automate(events: events, startTime: startTime)
     }
 
     /// Begin automation of the parameter.
@@ -103,10 +80,12 @@ extension NodeParameter {
             throw NSError(description: "\(avAudioNode.debugDescription) startTime.isSampleTimeValid is false")
         }
 
-        try stopAutomation()
+        stopAutomation()
 
-        events.withUnsafeBufferPointer { automationPtr in
-            guard let automationBaseAddress = automationPtr.baseAddress else { return }
+        let observer: AURenderObserver = try events.withUnsafeBufferPointer { automationPtr in
+            guard let automationBaseAddress = automationPtr.baseAddress else {
+                throw NSError(description: "Empty automation events buffer")
+            }
 
             guard let observer = ParameterAutomationGetRenderObserver(
                 parameter.address,
@@ -116,22 +95,20 @@ extension NodeParameter {
                 automationBaseAddress,
                 events.count
             ) else {
-                Log.error("Failed to create ParameterAutomationGetRenderObserver for \(avAudioNode.auAudioUnit.audioUnitName ?? "Audio Unit")")
-                return
+                throw NSError(description: "Failed to create render observer for \(avAudioNode.auAudioUnit.audioUnitName ?? "Audio Unit")")
             }
 
-            renderObserverToken = avAudioNode.auAudioUnit.token(byAddingRenderObserver: observer)
+            return observer
         }
+
+        renderObserverToken = avAudioNode.auAudioUnit.token(byAddingRenderObserver: observer)
     }
 
     /// Stop automation
-    public func stopAutomation() throws {
-        guard let avAudioNode else {
-            throw NSError(description: "Underlying AVAudioNode is nil")
-        }
-
+    public func stopAutomation() {
         if let token = renderObserverToken {
-            avAudioNode.auAudioUnit.removeRenderObserver(token)
+            avAudioNode?.auAudioUnit.removeRenderObserver(token)
+            renderObserverToken = nil
         }
     }
 

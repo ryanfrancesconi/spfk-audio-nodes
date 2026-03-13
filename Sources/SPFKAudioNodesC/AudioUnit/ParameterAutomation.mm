@@ -24,11 +24,11 @@ extern "C" AURenderObserver ParameterAutomationGetRenderObserver(AUParameterAddr
     // Sort events by start time.
     std::sort(events.begin(), events.end(), [](auto a, auto b) { return a.startTime < b.startTime; });
 
-    __block int index = 0;
+    __block size_t index = 0;
 
     return ^void(AudioUnitRenderActionFlags actionFlags, const AudioTimeStamp *timestamp, AUAudioFrameCount frameCount,
                  NSInteger outputBusNumber) {
-      if (actionFlags != kAudioUnitRenderAction_PreRender) {
+      if (!(actionFlags & kAudioUnitRenderAction_PreRender)) {
           return;
       }
 
