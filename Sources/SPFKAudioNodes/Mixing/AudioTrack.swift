@@ -18,6 +18,11 @@ public final class AudioTrack {
 
     /// output
     public let fader: Fader
+    
+    public var gain: AUValue {
+        get { fader.gain }
+        set { fader.gain = newValue }
+    }
 
     /// effects
     public private(set) lazy var audioUnitChain: AudioUnitChain = .init(delegate: self)

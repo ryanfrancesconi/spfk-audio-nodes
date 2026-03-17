@@ -2,9 +2,9 @@
 // Heavily based on the AudioKit version. All Rights Reserved. Revision History at http://github.com/AudioKit/AudioKit/
 
 import AVFoundation
-import SPFKAUHost
 import SPFKAudioBase
 import SPFKAudioNodesC
+import SPFKAUHost
 import SPFKBase
 
 extension Fader: AudioEngineNode {
