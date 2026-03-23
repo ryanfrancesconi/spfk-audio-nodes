@@ -8,6 +8,7 @@ import Testing
 
 @testable import SPFKAudioNodes
 
+@MainActor
 struct NodeParameterTests {
     static let testDef = NodeParameterDef(
         identifier: "testParam",
