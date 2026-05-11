@@ -42,11 +42,8 @@ public struct RegionFadeDescription {
 
     public var taper = AudioTaper.default {
         willSet {
-            if newValue.value != taper.value {
+            if newValue != taper {
                 fadeInCache = nil
-            }
-
-            if newValue.inverseValue != taper.inverseValue {
                 fadeOutCache = nil
             }
         }
