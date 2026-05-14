@@ -12,8 +12,13 @@ extension RegionFadeDescription {
     ///
     /// - Returns: `AutomationCurve`
     public mutating func fadeInCurve() -> AutomationCurve? {
-        // if no fade in, set to max
         guard inTime > 0 else {
+            fadeInCache = nil
+            return nil
+        }
+
+        // Playback starts at or past the end of the fade-in — no automation needed.
+        guard playbackStartOffset < inTime else {
             fadeInCache = nil
             return nil
         }
@@ -42,7 +47,17 @@ extension RegionFadeDescription {
             ),
         ]
 
-        let curve = AutomationCurve(points: points, resolution: stepResolution(for: inTime))
+        var curve = AutomationCurve(points: points, resolution: stepResolution(for: inTime))
+
+        // Starting mid-fade-in: crop to the current offset so the automation
+        // begins at the correct gain value, mirroring the fadeOutCurve() pattern.
+        if playbackStartOffset > 0 {
+            do {
+                try curve.crop(after: Float(playbackStartOffset))
+            } catch {
+                Log.error(error)
+            }
+        }
 
         fadeInCache = curve
 
@@ -81,10 +96,15 @@ extension RegionFadeDescription {
                 targetValue: maximumGain,
                 startTime: startTime - 0.02,
                 rampDuration: 0.02,
-                rampTaper: AudioTaper.linear.inverseValue,
+                rampTaper: AudioTaper.linear.value,
                 rampSkew: AudioTaper.linear.skew
             ),
 
+            // Use inverseValue so the ramp produces gain ≈ 1 - t^(1/taper):
+            // a fast initial drop that levels off toward silence. This mirrors
+            // the perceptual character of the fade-in (t^taper: slow rise, fast
+            // finish) and matches the visual convention — the ideal formula
+            // (1-t)^taper isn't expressible in a single AURampParameter point.
             ParameterAutomationPoint(
                 targetValue: Self.minimumGain,
                 startTime: startTime,

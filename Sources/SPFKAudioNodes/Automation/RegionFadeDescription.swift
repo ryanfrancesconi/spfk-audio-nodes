@@ -55,8 +55,37 @@ public struct RegionFadeDescription {
         }
     }
 
+    /// Time within the file where playback starts. Used by `fadeInCurve()` to compute
+    /// the correct initial gain and remaining ramp when starting mid-fade-in.
+    /// Must be set alongside `segmentDuration` before calling the curve builders.
+    public var playbackStartOffset: TimeInterval = 0 {
+        willSet {
+            if newValue != playbackStartOffset { fadeInCache = nil }
+        }
+    }
+
     public var isFaded: Bool {
         inTime > 0 || outTime > 0
+    }
+
+    /// Returns the fader gain at a given playback position within the file.
+    ///
+    /// Requires `segmentDuration` to be set to `fileDuration - playbackOffset`
+    /// so the fade-out zone boundary can be derived.
+    public func gainAt(playbackOffset: TimeInterval) -> AUValue {
+        if inTime > 0, playbackOffset < inTime {
+            let t = Float(playbackOffset / inTime)
+            return AUValue(pow(t, taper.value)) * maximumGain
+        }
+        if outTime > 0 {
+            let fileDuration = segmentDuration + playbackOffset
+            let fadeOutStart = fileDuration - outTime
+            if playbackOffset >= fadeOutStart {
+                let s = Float((playbackOffset - fadeOutStart) / outTime)
+                return AUValue(max(0, 1.0 - pow(s, taper.inverseValue))) * maximumGain
+            }
+        }
+        return maximumGain
     }
 
     // MARK: Event cache

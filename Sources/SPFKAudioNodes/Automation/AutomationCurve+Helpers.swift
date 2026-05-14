@@ -80,9 +80,8 @@ extension AutomationCurve {
         var position = point.startTime
         let startValue = currentValue
 
-        // March position along the segment
-        // this is effectively `while position <= endTime - resolution` without potentional for rounding errors
-        let eventCount = round(endTime / rampDuration).int
+        // March position along the segment in resolution-sized steps.
+        let eventCount = max(1, Int(ceil((endTime - point.startTime) / rampDuration)))
 
         for _ in 0 ..< eventCount {
             let isLastPoint = position + rampDuration >= endTime
@@ -129,8 +128,7 @@ extension AutomationCurve {
         // x is normalized position in ramp segment
         let x = (point.rampDuration - remain) / point.rampDuration
         let taper1 = start + (goal - start) * pow(x, abs(taper))
-        let absxm1 = abs((point.rampDuration - remain) / point.rampDuration - 1.0)
-        let taper2 = start + (goal - start) * (1.0 - pow(absxm1, 1.0 / abs(taper)))
+        let taper2 = start + (goal - start) * (1.0 - pow(1.0 - x, 1.0 / abs(taper)))
 
         return taper1 * (1.0 - point.rampSkew) + taper2 * point.rampSkew
     }
