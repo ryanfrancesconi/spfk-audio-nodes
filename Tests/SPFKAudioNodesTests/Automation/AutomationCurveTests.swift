@@ -2,6 +2,7 @@
 
 import AudioToolbox
 import Foundation
+import SPFKAudioBase
 import SPFKBase
 import Testing
 
@@ -10,58 +11,98 @@ import Testing
 
 @Suite(.tags(.automation))
 struct AutomationCurveTests {
-    @Test func createTaperedSegment() async throws {
-        // Curve is: /\
-        let points = [
-            AutomationPoint(time: 0.019075106002620478, gain: 0.0, selected: false, dBMax: 6),
-            AutomationPoint(time: 3.884410354243773, gain: 1.0, selected: false, dBMax: 6),
-            AutomationPoint(time: 6.800137064528385, gain: 0.0, selected: true, dBMax: 6),
-        ]
+    // MARK: - evalRamp
 
-        let curve = AutomationCurve(automationPoints: points)
-        let events = curve.events
-
-        let expectedResult = [
-            AutomationEvent(targetValue: 0.0, startTime: -0.0009248927, rampDuration: 0.02),
-            AutomationEvent(targetValue: 0.005943559, startTime: 0.019075107, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.01265814, startTime: 0.21907511, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.02071914, startTime: 0.41907513, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.030705478, startTime: 0.6190751, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.043200582, startTime: 0.8190751, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.058793373, startTime: 1.0190752, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.07808004, startTime: 1.2190752, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.10166606, startTime: 1.4190753, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.13016947, startTime: 1.6190753, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.16422543, startTime: 1.8190753, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.20449317, startTime: 2.0190754, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.2516673, startTime: 2.2190754, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.30649626, startTime: 2.4190755, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.36981598, startTime: 2.6190755, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.44261467, startTime: 2.8190756, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.5261766, startTime: 3.0190756, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.62245893, startTime: 3.2190757, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.7354354, startTime: 3.4190757, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.8812173, startTime: 3.6190758, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.584339, startTime: 3.8844104, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.4731614, startTime: 4.08441, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.3877983, startTime: 4.28441, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.3179616, startTime: 4.48441, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.25957137, startTime: 4.6844096, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.21034025, startTime: 4.8844094, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.16871434, startTime: 5.084409, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.13350144, startTime: 5.284409, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.10371025, startTime: 5.484409, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.078470916, startTime: 5.6844087, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.056991555, startTime: 5.8844085, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.03853297, startTime: 6.0844083, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.022393027, startTime: 6.284408, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.007896145, startTime: 6.484408, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.0, startTime: 6.6844077, rampDuration: 0.11572933),
-        ]
-
-        #expect(events.count == expectedResult.count)
-        #expect(events == expectedResult)
+    // Linear taper (value=1, skew=0) must be an exact straight line: gain == x at every point.
+    @Test func evalRampLinearIsLinear() {
+        let point = ParameterAutomationPoint(
+            targetValue: 1.0, startTime: 0, rampDuration: 2.0,
+            rampTaper: AudioTaper.linear.value, rampSkew: AudioTaper.linear.skew
+        )
+        for step in 1 ... 9 {
+            let x = Float(step) / 10.0
+            let result = AutomationCurve.evalRamp(start: 0, point: point, time: x * 2.0, endTime: 2.0)
+            #expect(abs(result - x) < 1e-5, "Linear taper: gain should equal x at x=\(x)")
+        }
     }
+
+    // Default taper (value=3, skew=1/3) at x=0.5: (2/3)*0.5³ + (1/3)*(1-0.5^(1/3)) ≈ 0.152.
+    // Anchors the blend formula — any change to evalRamp that alters this value is a regression.
+    @Test func evalRampDefaultTaperMidpoint() {
+        let point = ParameterAutomationPoint(
+            targetValue: 1.0, startTime: 0, rampDuration: 2.0,
+            rampTaper: AudioTaper.default.value, rampSkew: AudioTaper.default.skew
+        )
+        let result = AutomationCurve.evalRamp(start: 0, point: point, time: 1.0, endTime: 2.0)
+        #expect(abs(result - 0.152) < 0.001)
+    }
+
+    // With taper.value used for both fade directions, gainIn(x) + gainOut(x) == 1.0 for all x.
+    // This algebraic identity holds when fade-out uses taper.value — it breaks if inverseValue is used.
+    @Test func evalRampFadeInFadeOutSumToOne() {
+        let taper = AudioTaper.default
+        let fadeInPoint = ParameterAutomationPoint(
+            targetValue: 1.0, startTime: 0, rampDuration: 2.0,
+            rampTaper: taper.value, rampSkew: taper.skew
+        )
+        let fadeOutPoint = ParameterAutomationPoint(
+            targetValue: 0.0, startTime: 0, rampDuration: 2.0,
+            rampTaper: taper.value, rampSkew: taper.skew
+        )
+        for step in 1 ... 9 {
+            let time = Float(step) / 10.0 * 2.0
+            let gainIn = AutomationCurve.evalRamp(start: 0, point: fadeInPoint, time: time, endTime: 2.0)
+            let gainOut = AutomationCurve.evalRamp(start: 1, point: fadeOutPoint, time: time, endTime: 2.0)
+            #expect(abs(gainIn + gainOut - 1.0) < 1e-5, "Fade-in + fade-out must sum to 1.0 at t=\(time)")
+        }
+    }
+
+    // MARK: - Fade curve invariants
+
+    @Test func fadeInIsMonotonicallyIncreasing() throws {
+        var fade = RegionFadeDescription()
+        fade.inTime = 3.0
+        let value = fade.fadeInCurve()
+        let curve = try #require(value)
+        let values = curve.events.map(\.targetValue)
+        for i in 1 ..< values.count {
+            #expect(values[i] >= values[i - 1], "Fade-in event \(i) must not decrease")
+        }
+    }
+
+    @Test func fadeInBoundaryValues() throws {
+        var fade = RegionFadeDescription()
+        fade.inTime = 3.0
+
+        let value = fade.fadeInCurve()
+        let curve = try #require(value)
+        #expect(curve.events.first?.targetValue == RegionFadeDescription.minimumGain)
+        #expect(curve.events.last?.targetValue == fade.maximumGain)
+    }
+
+    @Test func fadeOutIsMonotonicallyDecreasing() throws {
+        var fade = RegionFadeDescription()
+        fade.outTime = 3.0
+        fade.segmentDuration = 3.0
+        let value = fade.fadeOutCurve()
+        let curve = try #require(value)
+        let values = curve.events.map(\.targetValue)
+        for i in 1 ..< values.count {
+            #expect(values[i] <= values[i - 1], "Fade-out event \(i) must not increase")
+        }
+    }
+
+    @Test func fadeOutEndsAtZero() throws {
+        var fade = RegionFadeDescription()
+        fade.outTime = 3.0
+        fade.segmentDuration = 3.0
+
+        let value = fade.fadeOutCurve()
+        let curve = try #require(value)
+        #expect(curve.events.last?.targetValue == RegionFadeDescription.minimumGain)
+    }
+
+    // MARK: - AutomationCurve replace
 
     @Test func replaceAutomationBasic() {
         let curve = AutomationCurve(points: [

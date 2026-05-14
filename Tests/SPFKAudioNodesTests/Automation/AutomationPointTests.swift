@@ -52,4 +52,18 @@ struct AutomationPointTests {
         point.gain = 2
         #expect(point.dBValue == 6)
     }
+
+    // AutomationPoint uses private backing stores (_time, _gain) and didSet logic that
+    // updates dBValue and label. Verifies the Codable round-trip preserves the full state.
+    @Test func codableRoundTrip() throws {
+        let original = AutomationPoint(time: 2.5, gain: 1.5, selected: true, dBMax: 6)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(AutomationPoint.self, from: data)
+
+        #expect(decoded.time == original.time)
+        #expect(decoded.gain == original.gain)
+        #expect(decoded.selected == original.selected)
+        #expect(decoded.dBValue == original.dBValue)
+        #expect(decoded.dBRange == original.dBRange)
+    }
 }

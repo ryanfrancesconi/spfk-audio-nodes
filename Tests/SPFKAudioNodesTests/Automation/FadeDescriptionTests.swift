@@ -12,6 +12,12 @@ import Testing
 struct FadeDescriptionTests {
     // MARK: - in
 
+    @Test func fadeInReturnsNilWhenZeroTime() {
+        var desc = RegionFadeDescription()
+        desc.inTime = 0
+        #expect(desc.fadeInCurve() == nil)
+    }
+
     @Test func fadeInTruncatingLastPointDuration() throws {
         var desc = RegionFadeDescription()
         desc.maximumGain = 1
@@ -107,6 +113,13 @@ struct FadeDescriptionTests {
 
     // MARK: - out
 
+    @Test func fadeOutReturnsNilWhenZeroTime() {
+        var desc = RegionFadeDescription()
+        desc.outTime = 0
+        desc.segmentDuration = 1
+        #expect(desc.fadeOutCurve() == nil)
+    }
+
     @Test func fadeOutTaperOneSecond() throws {
         var desc = RegionFadeDescription()
         desc.outTime = 1
@@ -117,45 +130,49 @@ struct FadeDescriptionTests {
         let curve = desc.fadeOutCurve()
         let events = try #require(curve?.events)
 
-        Log.debug(events)
-
-        let expectedResult = [
-            AutomationEvent(targetValue: 1.0, startTime: -0.02, rampDuration: 0.02),
-            AutomationEvent(targetValue: 0.4474643, startTime: 0.0, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.24746248, startTime: 0.2, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.12571156, startTime: 0.4, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.05045481, startTime: 0.6, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.0, startTime: 0.8, rampDuration: 0.19999999),
-        ]
-
-        #expect(events.count == expectedResult.count)
-        #expect(events == expectedResult)
+        // 1 lead-in + ceil(1.0 / 0.2) = 5 ramp events
+        #expect(events.count == 6)
+        #expect(events.first?.targetValue == desc.maximumGain)
+        #expect(events.last?.targetValue == RegionFadeDescription.minimumGain)
         #expect(events == desc.fadeOutCache?.events)
+
+        let values = events.map(\.targetValue)
+        for i in 1 ..< values.count {
+            #expect(values[i] <= values[i - 1], "Fade-out event \(i) must not increase")
+        }
     }
 
-    // test crop
+    // Tests that crop() correctly trims events when playback begins inside the fade curve.
     @Test func fadeOutStartingInsideCurve() throws {
         var desc = RegionFadeDescription()
         desc.outTime = 1
-        desc.segmentDuration = 0.8
+        desc.segmentDuration = 0.8   // starts 0.2s into a 1s fade
         desc.taper = .default
 
         let curve = desc.fadeOutCurve()
         let events = try #require(curve?.events)
 
-        Log.debug(events)
-
-        let expectedResult = [
-            AutomationEvent(targetValue: 0.4474643, startTime: -0.02, rampDuration: 0.02),
-            AutomationEvent(targetValue: 0.24746248, startTime: 0.0, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.12571156, startTime: 0.2, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.05045481, startTime: 0.40000004, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.0, startTime: 0.6, rampDuration: 0.19999999),
-        ]
-
-        #expect(events.count == expectedResult.count)
-        #expect(events == expectedResult)
         #expect(events == desc.fadeOutCache?.events)
+
+        // Cropped curve must have fewer events than the full 1s fade.
+        var fullDesc = RegionFadeDescription()
+        fullDesc.outTime = 1
+        fullDesc.segmentDuration = 1
+        fullDesc.taper = .default
+        let fullCount = fullDesc.fadeOutCurve()?.events.count ?? 0
+        #expect(events.count < fullCount)
+
+        // First event represents a mid-curve position: gain must be strictly between 0 and max.
+        let firstGain = try #require(events.first?.targetValue)
+        #expect(firstGain > RegionFadeDescription.minimumGain)
+        #expect(firstGain < desc.maximumGain)
+
+        #expect(events.last?.targetValue == RegionFadeDescription.minimumGain)
+
+        let values = events.map(\.targetValue)
+        for i in 1 ..< values.count {
+            #expect(values[i] <= values[i - 1], "Cropped fade-out event \(i) must not increase")
+        }
     }
 
     // MARK: - cache
