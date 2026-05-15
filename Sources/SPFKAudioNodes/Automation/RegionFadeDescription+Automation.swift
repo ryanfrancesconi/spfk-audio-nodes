@@ -12,13 +12,13 @@ extension RegionFadeDescription {
     ///
     /// - Returns: `AutomationCurve`
     public mutating func fadeInCurve() -> AutomationCurve? {
-        guard inTime > 0 else {
+        guard fade.inTime > 0 else {
             fadeInCache = nil
             return nil
         }
 
         // Playback starts at or past the end of the fade-in — no automation needed.
-        guard playbackStartOffset < inTime else {
+        guard playbackStartOffset < fade.inTime else {
             fadeInCache = nil
             return nil
         }
@@ -27,7 +27,7 @@ extension RegionFadeDescription {
             return fadeInCache
         }
 
-        let rampDuration = inTime.float
+        let rampDuration = fade.inTime.float
 
         let points = [
             ParameterAutomationPoint(
@@ -42,12 +42,12 @@ extension RegionFadeDescription {
                 targetValue: maximumGain,
                 startTime: 0,
                 rampDuration: rampDuration,
-                rampTaper: taper.value,
-                rampSkew: taper.skew
+                rampTaper: fade.taper.value,
+                rampSkew: fade.taper.skew
             ),
         ]
 
-        var curve = AutomationCurve(points: points, resolution: stepResolution(for: inTime))
+        var curve = AutomationCurve(points: points, resolution: stepResolution(for: fade.inTime))
 
         // Starting mid-fade-in: crop to the current offset so the automation
         // begins at the correct gain value, mirroring the fadeOutCurve() pattern.
@@ -74,7 +74,7 @@ extension RegionFadeDescription {
     ///
     /// - Returns: `AutomationCurve`
     public mutating func fadeOutCurve() -> AutomationCurve? {
-        guard outTime > 0 else {
+        guard fade.outTime > 0 else {
             fadeOutCache = nil
             return nil
         }
@@ -83,11 +83,11 @@ extension RegionFadeDescription {
             return fadeOutCache
         }
 
-        let rampDuration = outTime.float / sampleRateRatio
+        let rampDuration = fade.outTime.float / sampleRateRatio
 
         // offset: when the start of the fade out should occur. If it is negative, playback is starting inside the curve.
         // in that case segmentDuration is < outTime
-        let offset = Float(segmentDuration - outTime) / sampleRateRatio
+        let offset = Float(segmentDuration - fade.outTime) / sampleRateRatio
         let isInsideCurve = offset < 0
         let startTime = max(0, offset.float)
 
@@ -109,12 +109,12 @@ extension RegionFadeDescription {
                 targetValue: Self.minimumGain,
                 startTime: startTime,
                 rampDuration: rampDuration,
-                rampTaper: taper.inverseValue,
-                rampSkew: taper.skew
+                rampTaper: fade.taper.inverseValue,
+                rampSkew: fade.taper.skew
             ),
         ]
 
-        var curve = AutomationCurve(points: points, resolution: stepResolution(for: outTime))
+        var curve = AutomationCurve(points: points, resolution: stepResolution(for: fade.outTime))
 
         if isInsideCurve {
             do {

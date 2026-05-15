@@ -60,9 +60,9 @@ struct AutomationCurveTests {
     // MARK: - Fade curve invariants
 
     @Test func fadeInIsMonotonicallyIncreasing() throws {
-        var fade = RegionFadeDescription()
-        fade.inTime = 3.0
-        let value = fade.fadeInCurve()
+        var desc = RegionFadeDescription()
+        desc.fade.inTime = 3.0
+        let value = desc.fadeInCurve()
         let curve = try #require(value)
         let values = curve.events.map(\.targetValue)
         for i in 1 ..< values.count {
@@ -71,20 +71,20 @@ struct AutomationCurveTests {
     }
 
     @Test func fadeInBoundaryValues() throws {
-        var fade = RegionFadeDescription()
-        fade.inTime = 3.0
+        var desc = RegionFadeDescription()
+        desc.fade.inTime = 3.0
 
-        let value = fade.fadeInCurve()
+        let value = desc.fadeInCurve()
         let curve = try #require(value)
         #expect(curve.events.first?.targetValue == RegionFadeDescription.minimumGain)
-        #expect(curve.events.last?.targetValue == fade.maximumGain)
+        #expect(curve.events.last?.targetValue == desc.maximumGain)
     }
 
     @Test func fadeOutIsMonotonicallyDecreasing() throws {
-        var fade = RegionFadeDescription()
-        fade.outTime = 3.0
-        fade.segmentDuration = 3.0
-        let value = fade.fadeOutCurve()
+        var desc = RegionFadeDescription()
+        desc.fade.outTime = 3.0
+        desc.segmentDuration = 3.0
+        let value = desc.fadeOutCurve()
         let curve = try #require(value)
         let values = curve.events.map(\.targetValue)
         for i in 1 ..< values.count {
@@ -93,11 +93,11 @@ struct AutomationCurveTests {
     }
 
     @Test func fadeOutEndsAtZero() throws {
-        var fade = RegionFadeDescription()
-        fade.outTime = 3.0
-        fade.segmentDuration = 3.0
+        var desc = RegionFadeDescription()
+        desc.fade.outTime = 3.0
+        desc.segmentDuration = 3.0
 
-        let value = fade.fadeOutCurve()
+        let value = desc.fadeOutCurve()
         let curve = try #require(value)
         #expect(curve.events.last?.targetValue == RegionFadeDescription.minimumGain)
     }

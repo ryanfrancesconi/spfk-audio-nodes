@@ -14,7 +14,7 @@ struct FadeDescriptionTests {
 
     @Test func fadeInReturnsNilWhenZeroTime() {
         var desc = RegionFadeDescription()
-        desc.inTime = 0
+        desc.fade.inTime = 0
         #expect(desc.fadeInCurve() == nil)
     }
 
@@ -24,8 +24,8 @@ struct FadeDescriptionTests {
         desc.stepResolution = 0.2
 
         // should be a value that doesn't divide by stepResolution
-        desc.inTime = 4.305577
-        desc.taper = .default
+        desc.fade.inTime = 4.305577
+        desc.fade.taper = .default
         desc.stepResolution = 0.2
 
         let curve = desc.fadeInCurve()
@@ -43,8 +43,8 @@ struct FadeDescriptionTests {
 
     @Test func fadeInLinearOneSecond() throws {
         var desc = RegionFadeDescription()
-        desc.inTime = 1
-        desc.taper = .linear
+        desc.fade.inTime = 1
+        desc.fade.taper = .linear
 
         let curve = desc.fadeInCurve()
         let events = try #require(curve?.events)
@@ -65,8 +65,8 @@ struct FadeDescriptionTests {
 
     @Test func fadeInTaperOneSecond() throws {
         var desc = RegionFadeDescription()
-        desc.inTime = 1
-        desc.taper = .default
+        desc.fade.inTime = 1
+        desc.fade.taper = .default
 
         let curve = desc.fadeInCurve()
         let events = try #require(curve?.events)
@@ -89,8 +89,8 @@ struct FadeDescriptionTests {
 
     @Test func fadeInReverseTaperOneSecond() throws {
         var desc = RegionFadeDescription()
-        desc.inTime = 1
-        desc.taper = .reverseAudio
+        desc.fade.inTime = 1
+        desc.fade.taper = .reverseAudio
 
         let curve = desc.fadeInCurve()
         let events = try #require(curve?.events)
@@ -115,17 +115,17 @@ struct FadeDescriptionTests {
 
     @Test func fadeOutReturnsNilWhenZeroTime() {
         var desc = RegionFadeDescription()
-        desc.outTime = 0
+        desc.fade.outTime = 0
         desc.segmentDuration = 1
         #expect(desc.fadeOutCurve() == nil)
     }
 
     @Test func fadeOutTaperOneSecond() throws {
         var desc = RegionFadeDescription()
-        desc.outTime = 1
+        desc.fade.outTime = 1
         desc.segmentDuration = 1
         desc.stepResolution = 0.2
-        desc.taper = .default
+        desc.fade.taper = .default
 
         let curve = desc.fadeOutCurve()
         let events = try #require(curve?.events)
@@ -145,9 +145,9 @@ struct FadeDescriptionTests {
     // Tests that crop() correctly trims events when playback begins inside the fade curve.
     @Test func fadeOutStartingInsideCurve() throws {
         var desc = RegionFadeDescription()
-        desc.outTime = 1
+        desc.fade.outTime = 1
         desc.segmentDuration = 0.8   // starts 0.2s into a 1s fade
-        desc.taper = .default
+        desc.fade.taper = .default
 
         let curve = desc.fadeOutCurve()
         let events = try #require(curve?.events)
@@ -156,9 +156,9 @@ struct FadeDescriptionTests {
 
         // Cropped curve must have fewer events than the full 1s fade.
         var fullDesc = RegionFadeDescription()
-        fullDesc.outTime = 1
+        fullDesc.fade.outTime = 1
         fullDesc.segmentDuration = 1
-        fullDesc.taper = .default
+        fullDesc.fade.taper = .default
         let fullCount = fullDesc.fadeOutCurve()?.events.count ?? 0
         #expect(events.count < fullCount)
 
@@ -179,10 +179,10 @@ struct FadeDescriptionTests {
 
     @Test func fadeCache() throws {
         var desc = RegionFadeDescription()
-        desc.inTime = 1
-        desc.outTime = 1
+        desc.fade.inTime = 1
+        desc.fade.outTime = 1
         desc.segmentDuration = 2
-        desc.taper = .default
+        desc.fade.taper = .default
 
         let curveIn = desc.fadeInCurve()
         let curveOut = desc.fadeOutCurve()
@@ -193,8 +193,8 @@ struct FadeDescriptionTests {
         #expect(desc.fadeInCache != nil)
         #expect(desc.fadeOutCache == curveOut)
 
-        desc.inTime = 0
-        desc.outTime = 0
+        desc.fade.inTime = 0
+        desc.fade.outTime = 0
         #expect(desc.fadeInCache == nil)
         #expect(desc.fadeOutCache == nil)
     }

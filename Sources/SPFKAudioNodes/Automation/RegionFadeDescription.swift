@@ -20,32 +20,21 @@ public struct RegionFadeDescription {
         }
     }
 
-    /// How long the fade in is
-    public var inTime: TimeInterval = 0 {
+    /// Fade-in/out durations and taper. Mutating any sub-field invalidates the relevant curve cache.
+    public var fade = FadeDescription() {
         willSet {
-            if newValue != inTime { fadeInCache = nil }
-        }
-    }
-
-    /// How long the fade out is
-    public var outTime: TimeInterval = 0 {
-        willSet {
-            if newValue != outTime { fadeOutCache = nil }
+            if newValue.inTime != fade.inTime { fadeInCache = nil }
+            if newValue.outTime != fade.outTime { fadeOutCache = nil }
+            if newValue.taper != fade.taper {
+                fadeInCache = nil
+                fadeOutCache = nil
+            }
         }
     }
 
     public var segmentDuration: TimeInterval = 0 {
         willSet {
             if newValue != segmentDuration { fadeOutCache = nil }
-        }
-    }
-
-    public var taper = AudioTaper.default {
-        willSet {
-            if newValue != taper {
-                fadeInCache = nil
-                fadeOutCache = nil
-            }
         }
     }
 
@@ -64,25 +53,23 @@ public struct RegionFadeDescription {
         }
     }
 
-    public var isFaded: Bool {
-        inTime > 0 || outTime > 0
-    }
+    public var isFaded: Bool { !fade.isEmpty }
 
     /// Returns the fader gain at a given playback position within the file.
     ///
     /// Requires `segmentDuration` to be set to `fileDuration - playbackOffset`
     /// so the fade-out zone boundary can be derived.
     public func gainAt(playbackOffset: TimeInterval) -> AUValue {
-        if inTime > 0, playbackOffset < inTime {
-            let t = Float(playbackOffset / inTime)
-            return AUValue(pow(t, taper.value)) * maximumGain
+        if fade.inTime > 0, playbackOffset < fade.inTime {
+            let t = Float(playbackOffset / fade.inTime)
+            return AUValue(pow(t, fade.taper.value)) * maximumGain
         }
-        if outTime > 0 {
+        if fade.outTime > 0 {
             let fileDuration = segmentDuration + playbackOffset
-            let fadeOutStart = fileDuration - outTime
+            let fadeOutStart = fileDuration - fade.outTime
             if playbackOffset >= fadeOutStart {
-                let s = Float((playbackOffset - fadeOutStart) / outTime)
-                return AUValue(max(0, 1.0 - pow(s, taper.inverseValue))) * maximumGain
+                let s = Float((playbackOffset - fadeOutStart) / fade.outTime)
+                return AUValue(max(0, 1.0 - pow(s, fade.taper.inverseValue))) * maximumGain
             }
         }
         return maximumGain
