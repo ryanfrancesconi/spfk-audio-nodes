@@ -30,8 +30,8 @@ struct AutomationEvent {
 /// Returns a render observer block which will apply the automation to the
 /// selected parameter.
 AURenderObserver ParameterAutomationGetRenderObserver(AUParameterAddress address,
-                                                      AUScheduleParameterBlock scheduleParameterBlock, float sampleRate,
-                                                      float startSampleTime, const struct AutomationEvent *events,
+                                                      AUScheduleParameterBlock scheduleParameterBlock, double sampleRate,
+                                                      double startSampleTime, const struct AutomationEvent *events,
                                                       size_t count);
 
 #endif // !__cplusplus

@@ -15,7 +15,7 @@
 /// selected parameter.
 extern "C" AURenderObserver ParameterAutomationGetRenderObserver(AUParameterAddress address,
                                                                  AUScheduleParameterBlock scheduleParameterBlock,
-                                                                 float sampleRate, float startSampleTime,
+                                                                 double sampleRate, double startSampleTime,
                                                                  const struct AutomationEvent *eventsArray,
                                                                  size_t count) {
     //
@@ -32,8 +32,9 @@ extern "C" AURenderObserver ParameterAutomationGetRenderObserver(AUParameterAddr
           return;
       }
 
-      float blockStartTime = (timestamp->mSampleTime - startSampleTime) / sampleRate;
-      float blockEndTime = blockStartTime + frameCount / sampleRate;
+      // Use double throughout to preserve precision against the engine's sample-time clock.
+      double blockStartTime = (timestamp->mSampleTime - startSampleTime) / sampleRate;
+      double blockEndTime = blockStartTime + frameCount / sampleRate;
 
       AUValue initial = NAN;
 
@@ -63,16 +64,23 @@ extern "C" AURenderObserver ParameterAutomationGetRenderObserver(AUParameterAddr
               break;
           }
 
-          AUEventSampleTime startTime = (event.startTime - blockStartTime) * sampleRate;
-          AUAudioFrameCount duration = event.rampDuration * sampleRate;
+          // Signed frame offset from the start of this render block.
+          int64_t sampleOffset = (int64_t)((event.startTime - blockStartTime) * sampleRate);
+          int64_t rawDuration = (int64_t)(event.rampDuration * sampleRate);
 
-          // If the event has already started, ensure we hit the targetValue
-          // at the appropriate time.
-          if (startTime < 0) {
-              duration += startTime;
+          if (sampleOffset < 0) {
+              // Event started before this block; shorten the ramp by the elapsed portion.
+              rawDuration += sampleOffset;
+              if (rawDuration <= 0) {
+                  // Ramp already complete — apply target value immediately and move on.
+                  scheduleParameterBlock(AUEventSampleTimeImmediate, 0, address, event.targetValue);
+                  index++;
+                  continue;
+              }
+              sampleOffset = 0;
           }
 
-          scheduleParameterBlock(startTime, duration, address, event.targetValue);
+          scheduleParameterBlock((AUEventSampleTime)sampleOffset, (AUAudioFrameCount)rawDuration, address, event.targetValue);
 
           index++;
       }
