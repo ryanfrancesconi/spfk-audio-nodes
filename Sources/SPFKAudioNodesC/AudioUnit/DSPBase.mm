@@ -157,7 +157,11 @@ void DSPBase::processWithEvents(AudioTimeStamp const *timestamp, AUAudioFrameCou
         // start late events late.
         auto timeZero = AUEventSampleTime(0);
         auto headEventTime = event->head.eventSampleTime;
-        AUAudioFrameCount const framesThisSegment = AUAudioFrameCount(std::max(timeZero, headEventTime - now));
+        // Clamp to framesRemaining: events scheduled past the end of the current
+        // buffer must not cause processOrBypass to read beyond the buffer or
+        // framesRemaining to underflow (unsigned wrap → infinite loop).
+        AUAudioFrameCount const framesThisSegment = AUAudioFrameCount(
+            std::min((AUEventSampleTime)framesRemaining, std::max(timeZero, headEventTime - now)));
 
         // Compute everything before the next event.
         if (framesThisSegment > 0) {

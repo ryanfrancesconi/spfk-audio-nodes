@@ -11,8 +11,6 @@
 #ifdef __cplusplus
 
 #import <AudioToolbox/AudioToolbox.h>
-#import <libkern/OSAtomic.h>
-
 #import <atomic>
 
 class ParameterRamper {

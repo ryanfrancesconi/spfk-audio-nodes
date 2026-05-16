@@ -37,8 +37,6 @@ AUValue getParameterValueDSP(DSPRef pDSP, AUParameterAddress address);
 void setBypassDSP(DSPRef pDSP, bool bypassed);
 bool getBypassDSP(DSPRef pDSP);
 
-void initializeConstantDSP(DSPRef pDSP, AUValue value);
-
 void setWavetableDSP(DSPRef pDSP, const float *table, size_t length, int index);
 
 void deleteDSP(DSPRef pDSP);
