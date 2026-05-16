@@ -1,6 +1,6 @@
-// Copyright Ryan Francesconi. All Rights Reserved. Revision History at
-// https://github.com/ryanfrancesconi/spfk-audio-nodes Heavily based on the AudioKit version. All Rights Reserved.
-// Revision History at http://github.com/AudioKit/AudioKit/
+// Copyright Ryan Francesconi. All Rights Reserved.
+// Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
+// Based on the AudioKit version. All Rights Reserved.
 
 #include "ParameterAutomation.h"
 #include <algorithm>
@@ -80,7 +80,8 @@ extern "C" AURenderObserver ParameterAutomationGetRenderObserver(AUParameterAddr
               sampleOffset = 0;
           }
 
-          scheduleParameterBlock((AUEventSampleTime)sampleOffset, (AUAudioFrameCount)rawDuration, address, event.targetValue);
+          scheduleParameterBlock((AUEventSampleTime)sampleOffset, (AUAudioFrameCount)rawDuration, address,
+                                 event.targetValue);
 
           index++;
       }
