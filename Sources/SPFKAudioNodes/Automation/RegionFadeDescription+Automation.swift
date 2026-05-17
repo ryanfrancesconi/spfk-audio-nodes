@@ -89,13 +89,13 @@ extension RegionFadeDescription {
         // in that case segmentDuration is < outTime
         let offset = Float(segmentDuration - fade.outTime) / sampleRateRatio
         let isInsideCurve = offset < 0
-        let startTime = max(0, offset.float)
+        let startTime = max(0, offset)
 
         let points = [
             ParameterAutomationPoint(
                 targetValue: maximumGain,
-                startTime: startTime - 0.02,
-                rampDuration: 0.02,
+                startTime: startTime - ParameterAutomationTiming.primerRampDuration,
+                rampDuration: ParameterAutomationTiming.primerRampDuration,
                 rampTaper: AudioTaper.linear.value,
                 rampSkew: AudioTaper.linear.skew
             ),

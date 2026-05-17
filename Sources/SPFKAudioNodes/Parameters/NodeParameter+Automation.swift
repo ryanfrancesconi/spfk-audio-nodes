@@ -120,7 +120,7 @@ extension NodeParameter {
     ///   - duration: duration to ramp to the target value in seconds
     public func ramp(from start: AUValue, to target: AUValue, duration: Float) {
         let sampleRate = self.sampleRate
-        ramp(to: start, duration: 0.02, delay: 0, sampleRate: sampleRate.float)
-        ramp(to: target, duration: duration, delay: 0.02, sampleRate: sampleRate.float)
+        ramp(to: start, duration: ParameterAutomationTiming.primerRampDuration, delay: 0, sampleRate: sampleRate.float)
+        ramp(to: target, duration: duration, delay: ParameterAutomationTiming.primerRampDuration, sampleRate: sampleRate.float)
     }
 }

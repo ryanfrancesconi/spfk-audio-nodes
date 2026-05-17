@@ -61,8 +61,11 @@ public class Fader: AudioEngineNodeAU, TypeDescribable {
     ///
     /// - Parameters:
     ///   - gain: Amplification factor (Default: 1, Minimum: 0)
+    ///   - gainRange: AU parameter range for left/right gain. Defaults to `FaderParameter.defaultGainRange`.
+    ///     Pass a wider range (e.g. `0...16`) when this fader will be driven by normalization automation
+    ///     that may exceed the default +12 dB ceiling.
     ///
-    public init(gain: AUValue = 1) async throws {
+    public init(gain: AUValue = 1, gainRange: ClosedRange<AUValue> = FaderParameter.defaultGainRange) async throws {
         let subType = kAudioUnitFaderSubTypeString.fourCC ?? 0
 
         audioComponentDescription = AudioComponentDescription(
@@ -78,6 +81,11 @@ public class Fader: AudioEngineNodeAU, TypeDescribable {
             named: Self.typeName,
             version: Self.version
         )
+
+        if gainRange != FaderParameter.defaultGainRange {
+            $leftGain.def.range = gainRange
+            $rightGain.def.range = gainRange
+        }
 
         setupParameters()
 

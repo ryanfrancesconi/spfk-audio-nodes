@@ -184,11 +184,10 @@ extension AutomationCurve {
         let automationPoints = automationPoints.sorted()
 
         var events: [AutomationEvent] = [
-            // put slightly in past to trigger AUEventSampleTimeImmediate
             AutomationEvent(
                 targetValue: automationPoints[0].gain,
-                startTime: automationPoints[0].time.float - 0.02,
-                rampDuration: 0.02
+                startTime: automationPoints[0].time.float - ParameterAutomationTiming.primerRampDuration,
+                rampDuration: ParameterAutomationTiming.primerRampDuration
             ),
         ]
 

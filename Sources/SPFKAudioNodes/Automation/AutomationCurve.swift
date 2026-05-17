@@ -13,8 +13,9 @@ public struct AutomationCurve: Equatable {
     /// Time between linear points to interpolate between
     public static let defaultResolution: Float = 0.2
 
-    /// Array of points that make up the curve
-    public var points: [ParameterAutomationPoint]
+    /// Array of points that make up the curve. Mutating this directly leaves `events` stale;
+    /// construct a new `AutomationCurve` to get consistent evaluated events.
+    public internal(set) var points: [ParameterAutomationPoint]
 
     public internal(set) var events: [AutomationEvent] = []
 

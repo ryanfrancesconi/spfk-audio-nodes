@@ -29,7 +29,7 @@ extension AutomationCurve {
 
         // Append recorded points.
         result.append(contentsOf: newPoints.map { point in
-            ParameterAutomationPoint(targetValue: point.1, startTime: point.0, rampDuration: 0.01)
+            ParameterAutomationPoint(targetValue: point.1, startTime: point.0, rampDuration: ParameterAutomationTiming.recordedPointRampDuration)
         })
 
         // Sort vector by time.
@@ -38,6 +38,9 @@ extension AutomationCurve {
         return AutomationCurve(points: result)
     }
 
+    /// - Note: Only `events` (the dense linear segments) are mutated. `points` (the original
+    ///   curve definition) is left unchanged, so the struct becomes partially inconsistent
+    ///   after cropping. Treat crop as a terminal operation — do not re-evaluate afterwards.
     public mutating func crop(after startPoint: Float) throws {
         guard events.isNotEmpty else {
             throw NSError(description: "No events to crop")
@@ -70,8 +73,8 @@ extension AutomationCurve {
             // add the final negative start event in past to set initialValue
             let immediate = AutomationEvent(
                 targetValue: firstPast.targetValue,
-                startTime: -0.02,
-                rampDuration: 0.02,
+                startTime: -ParameterAutomationTiming.primerRampDuration,
+                rampDuration: ParameterAutomationTiming.primerRampDuration,
             )
 
             futureEvents.insert(immediate, at: 0)
