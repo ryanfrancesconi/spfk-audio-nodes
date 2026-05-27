@@ -42,8 +42,8 @@ extension RegionFadeDescription {
                 targetValue: maximumGain,
                 startTime: 0,
                 rampDuration: rampDuration,
-                rampTaper: fade.taper.value,
-                rampSkew: fade.taper.skew
+                rampTaper: fade.inTaper.value,
+                rampSkew: fade.inTaper.skew
             ),
         ]
 
@@ -109,8 +109,8 @@ extension RegionFadeDescription {
                 targetValue: Self.minimumGain,
                 startTime: startTime,
                 rampDuration: rampDuration,
-                rampTaper: fade.taper.inverseValue,
-                rampSkew: fade.taper.skew
+                rampTaper: fade.outTaper.inverseValue,
+                rampSkew: fade.outTaper.skew
             ),
         ]
 

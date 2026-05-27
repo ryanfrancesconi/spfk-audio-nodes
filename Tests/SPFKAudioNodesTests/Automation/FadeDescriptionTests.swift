@@ -25,7 +25,7 @@ struct FadeDescriptionTests {
 
         // should be a value that doesn't divide by stepResolution
         desc.fade.inTime = 4.305577
-        desc.fade.taper = .default
+        desc.fade.inTaper = .default
         desc.stepResolution = 0.2
 
         let curve = desc.fadeInCurve()
@@ -44,7 +44,7 @@ struct FadeDescriptionTests {
     @Test func fadeInLinearOneSecond() throws {
         var desc = RegionFadeDescription()
         desc.fade.inTime = 1
-        desc.fade.taper = .linear
+        desc.fade.inTaper = .linear
 
         let curve = desc.fadeInCurve()
         let events = try #require(curve?.events)
@@ -66,7 +66,7 @@ struct FadeDescriptionTests {
     @Test func fadeInTaperOneSecond() throws {
         var desc = RegionFadeDescription()
         desc.fade.inTime = 1
-        desc.fade.taper = .default
+        desc.fade.inTaper = .default
 
         let curve = desc.fadeInCurve()
         let events = try #require(curve?.events)
@@ -90,7 +90,7 @@ struct FadeDescriptionTests {
     @Test func fadeInReverseTaperOneSecond() throws {
         var desc = RegionFadeDescription()
         desc.fade.inTime = 1
-        desc.fade.taper = .reverseAudio
+        desc.fade.inTaper = .reverseAudio
 
         let curve = desc.fadeInCurve()
         let events = try #require(curve?.events)
@@ -125,7 +125,7 @@ struct FadeDescriptionTests {
         desc.fade.outTime = 1
         desc.segmentDuration = 1
         desc.stepResolution = 0.2
-        desc.fade.taper = .default
+        desc.fade.outTaper = .default
 
         let curve = desc.fadeOutCurve()
         let events = try #require(curve?.events)
@@ -147,7 +147,7 @@ struct FadeDescriptionTests {
         var desc = RegionFadeDescription()
         desc.fade.outTime = 1
         desc.segmentDuration = 0.8   // starts 0.2s into a 1s fade
-        desc.fade.taper = .default
+        desc.fade.outTaper = .default
 
         let curve = desc.fadeOutCurve()
         let events = try #require(curve?.events)
@@ -158,7 +158,7 @@ struct FadeDescriptionTests {
         var fullDesc = RegionFadeDescription()
         fullDesc.fade.outTime = 1
         fullDesc.segmentDuration = 1
-        fullDesc.fade.taper = .default
+        fullDesc.fade.outTaper = .default
         let fullCount = fullDesc.fadeOutCurve()?.events.count ?? 0
         #expect(events.count < fullCount)
 
@@ -182,7 +182,8 @@ struct FadeDescriptionTests {
         desc.fade.inTime = 1
         desc.fade.outTime = 1
         desc.segmentDuration = 2
-        desc.fade.taper = .default
+        desc.fade.inTaper = .default
+        desc.fade.outTaper = .default
 
         let curveIn = desc.fadeInCurve()
         let curveOut = desc.fadeOutCurve()

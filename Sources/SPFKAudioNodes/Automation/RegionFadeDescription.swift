@@ -20,15 +20,13 @@ public struct RegionFadeDescription {
         }
     }
 
-    /// Fade-in/out durations and taper. Mutating any sub-field invalidates the relevant curve cache.
+    /// Fade-in/out durations and tapers. Mutating any sub-field invalidates the relevant curve cache.
     public var fade = FadeDescription() {
         willSet {
             if newValue.inTime != fade.inTime { fadeInCache = nil }
             if newValue.outTime != fade.outTime { fadeOutCache = nil }
-            if newValue.taper != fade.taper {
-                fadeInCache = nil
-                fadeOutCache = nil
-            }
+            if newValue.inTaper != fade.inTaper { fadeInCache = nil }
+            if newValue.outTaper != fade.outTaper { fadeOutCache = nil }
         }
     }
 
@@ -63,9 +61,9 @@ public struct RegionFadeDescription {
         if fade.inTime > 0, playbackOffset < fade.inTime {
             let t = Float(playbackOffset / fade.inTime)
             // Match evalRamp: blend concave (pow(t, value)) with convex (1 - pow(1-t, inverseValue))
-            let taper1 = pow(t, fade.taper.value)
-            let taper2 = 1.0 - pow(1.0 - t, fade.taper.inverseValue)
-            return (taper1 * (1.0 - fade.taper.skew) + taper2 * fade.taper.skew) * maximumGain
+            let taper1 = pow(t, fade.inTaper.value)
+            let taper2 = 1.0 - pow(1.0 - t, fade.inTaper.inverseValue)
+            return (taper1 * (1.0 - fade.inTaper.skew) + taper2 * fade.inTaper.skew) * maximumGain
         }
         if fade.outTime > 0 {
             let fileDuration = segmentDuration + playbackOffset
@@ -74,9 +72,9 @@ public struct RegionFadeDescription {
                 let s = Float((playbackOffset - fadeOutStart) / fade.outTime)
                 // evalRamp with inverseValue taper (downward ramp):
                 // taper1 = 1 - pow(s, inverseValue), taper2 = pow(1-s, value)
-                let taper1 = 1.0 - pow(s, fade.taper.inverseValue)
-                let taper2 = pow(1.0 - s, fade.taper.value)
-                return max(0, taper1 * (1.0 - fade.taper.skew) + taper2 * fade.taper.skew) * maximumGain
+                let taper1 = 1.0 - pow(s, fade.outTaper.inverseValue)
+                let taper2 = pow(1.0 - s, fade.outTaper.value)
+                return max(0, taper1 * (1.0 - fade.outTaper.skew) + taper2 * fade.outTaper.skew) * maximumGain
             }
         }
         return maximumGain
