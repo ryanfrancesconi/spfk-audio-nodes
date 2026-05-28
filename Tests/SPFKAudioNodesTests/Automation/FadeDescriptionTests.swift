@@ -2,6 +2,7 @@
 
 import AudioToolbox
 import Foundation
+import SPFKAudioBase
 import SPFKBase
 import Testing
 
@@ -172,6 +173,110 @@ struct FadeDescriptionTests {
         let values = events.map(\.targetValue)
         for i in 1 ..< values.count {
             #expect(values[i] <= values[i - 1], "Cropped fade-out event \(i) must not increase")
+        }
+    }
+
+    // MARK: - gainAt
+
+    @Test func gainAtReturnsMaximumGainOutsideFadeZones() {
+        var desc = RegionFadeDescription()
+        desc.fade.inTime = 1
+        desc.fade.outTime = 1
+        desc.fade.inTaper = .default
+        desc.fade.outTaper = .default
+        // Middle of a 10s file: no fade zone active
+        desc.segmentDuration = 10 - 5
+        #expect(desc.gainAt(playbackOffset: 5) == desc.maximumGain)
+    }
+
+    @Test func gainAtFadeInLinearBoundaries() {
+        var desc = RegionFadeDescription()
+        desc.fade.inTime = 2
+        desc.fade.inTaper = .linear
+        let duration = 10.0
+
+        desc.segmentDuration = duration
+        #expect(desc.gainAt(playbackOffset: 0).isApproximatelyEqual(to: 0, absoluteTolerance: 0.001))
+
+        // At end of fade-in (== inTime), condition is `< inTime` so we fall through to maximumGain
+        desc.segmentDuration = duration - 2
+        #expect(desc.gainAt(playbackOffset: 2) == desc.maximumGain)
+    }
+
+    @Test func gainAtFadeInLinearMidpointIsHalf() {
+        var desc = RegionFadeDescription()
+        desc.fade.inTime = 2
+        desc.fade.inTaper = .linear
+        desc.segmentDuration = 10 - 1
+        #expect(desc.gainAt(playbackOffset: 1).isApproximatelyEqual(to: 0.5, absoluteTolerance: 0.001))
+    }
+
+    @Test func gainAtFadeOutLinearMidpointIsHalf() {
+        var desc = RegionFadeDescription()
+        desc.fade.outTime = 2
+        desc.fade.outTaper = .linear
+        let duration = 10.0
+
+        desc.segmentDuration = duration - 9
+        #expect(desc.gainAt(playbackOffset: 9).isApproximatelyEqual(to: 0.5, absoluteTolerance: 0.001))
+
+        desc.segmentDuration = duration - 10
+        #expect(desc.gainAt(playbackOffset: 10).isApproximatelyEqual(to: 0, absoluteTolerance: 0.001))
+    }
+
+    @Test func gainAtFadeInMatchesAudioTaperFormula() {
+        // RegionFadeDescription.gainAt uses its own inline math; cross-check it against
+        // AudioTaper.gainAt(t:) so the two implementations can't silently diverge.
+        for taper in AudioTaper.presets {
+            var desc = RegionFadeDescription()
+            desc.fade.inTime = 1
+            desc.fade.inTaper = taper
+            desc.segmentDuration = 2
+
+            for step in 0 ... 10 {
+                let t = Double(step) / 10.0
+                // gainAt uses `< inTime`, so clamp to just below boundary
+                let offset = t < 1.0 ? t : 0.999
+                let expected = Float(taper.gainAt(t: offset))
+                let actual = desc.gainAt(playbackOffset: offset)
+                #expect(
+                    actual.isApproximatelyEqual(to: expected, absoluteTolerance: 0.001),
+                    "taper \(taper), t=\(t): got \(actual), expected \(expected)"
+                )
+            }
+        }
+    }
+
+    @Test func gainAtFadeInIsMonotonicallyIncreasing() {
+        for taper in AudioTaper.presets {
+            var desc = RegionFadeDescription()
+            desc.fade.inTime = 1
+            desc.fade.inTaper = taper
+            desc.segmentDuration = 2
+            var prev: AUValue = -1
+            for step in 0 ... 9 {
+                let gain = desc.gainAt(playbackOffset: Double(step) / 10.0)
+                #expect(gain >= prev, "taper \(taper) not monotone at step \(step)")
+                prev = gain
+            }
+        }
+    }
+
+    @Test func gainAtFadeOutIsMonotonicallyDecreasing() {
+        for taper in AudioTaper.presets {
+            var desc = RegionFadeDescription()
+            desc.fade.outTime = 1
+            desc.fade.outTaper = taper
+            let duration = 2.0
+            var prev: AUValue = 2
+            // Sample across the 1s fade-out window at the end of a 2s file
+            for step in 0 ... 10 {
+                let offset = 1.0 + Double(step) / 10.0  // 1.0 ... 2.0
+                desc.segmentDuration = duration - offset
+                let gain = desc.gainAt(playbackOffset: offset)
+                #expect(gain <= prev, "taper \(taper) not monotone decreasing at offset \(offset)")
+                prev = gain
+            }
         }
     }
 
