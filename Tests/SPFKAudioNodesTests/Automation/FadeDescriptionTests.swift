@@ -225,8 +225,7 @@ struct FadeDescriptionTests {
     }
 
     @Test func gainAtFadeInMatchesAudioTaperFormula() {
-        // RegionFadeDescription.gainAt uses its own inline math; cross-check it against
-        // AudioTaper.gainAt(t:) so the two implementations can't silently diverge.
+        // Verifies gainAt(playbackOffset:) in the fade-in zone delegates to AudioTaper.gainAt(t:).
         for taper in AudioTaper.presets {
             var desc = RegionFadeDescription()
             desc.fade.inTime = 1
@@ -242,6 +241,28 @@ struct FadeDescriptionTests {
                 #expect(
                     actual.isApproximatelyEqual(to: expected, absoluteTolerance: 0.001),
                     "taper \(taper), t=\(t): got \(actual), expected \(expected)"
+                )
+            }
+        }
+    }
+
+    @Test func gainAtFadeOutMatchesAudioTaperFormula() {
+        // Verifies gainAt(playbackOffset:) in the fade-out zone delegates to AudioTaper.fadeOutGainAt(s:).
+        for taper in AudioTaper.presets {
+            var desc = RegionFadeDescription()
+            desc.fade.outTime = 1
+            desc.fade.outTaper = taper
+            let duration = 2.0
+
+            for step in 0 ... 10 {
+                let s = Double(step) / 10.0
+                let offset = 1.0 + s
+                desc.segmentDuration = duration - offset
+                let expected = Float(taper.fadeOutGainAt(s: s))
+                let actual = desc.gainAt(playbackOffset: offset)
+                #expect(
+                    actual.isApproximatelyEqual(to: expected, absoluteTolerance: 0.001),
+                    "taper \(taper), s=\(s): got \(actual), expected \(expected)"
                 )
             }
         }

@@ -60,21 +60,14 @@ public struct RegionFadeDescription {
     public func gainAt(playbackOffset: TimeInterval) -> AUValue {
         if fade.inTime > 0, playbackOffset < fade.inTime {
             let t = Float(playbackOffset / fade.inTime)
-            // Match evalRamp: blend concave (pow(t, value)) with convex (1 - pow(1-t, inverseValue))
-            let taper1 = pow(t, fade.inTaper.value)
-            let taper2 = 1.0 - pow(1.0 - t, fade.inTaper.inverseValue)
-            return (taper1 * (1.0 - fade.inTaper.skew) + taper2 * fade.inTaper.skew) * maximumGain
+            return Float(fade.inTaper.gainAt(t: Double(t))) * maximumGain
         }
         if fade.outTime > 0 {
             let fileDuration = segmentDuration + playbackOffset
             let fadeOutStart = fileDuration - fade.outTime
             if playbackOffset >= fadeOutStart {
                 let s = Float((playbackOffset - fadeOutStart) / fade.outTime)
-                // evalRamp with inverseValue taper (downward ramp):
-                // taper1 = 1 - pow(s, inverseValue), taper2 = pow(1-s, value)
-                let taper1 = 1.0 - pow(s, fade.outTaper.inverseValue)
-                let taper2 = pow(1.0 - s, fade.outTaper.value)
-                return max(0, taper1 * (1.0 - fade.outTaper.skew) + taper2 * fade.outTaper.skew) * maximumGain
+                return Float(fade.outTaper.fadeOutGainAt(s: Double(s))) * maximumGain
             }
         }
         return maximumGain
