@@ -128,4 +128,17 @@ extension Fader {
         $leftGain.stopAutomation()
         $rightGain.stopAutomation()
     }
+
+    /// Add a loop-batch automation observer without removing existing observers.
+    /// Covers a non-overlapping future time range alongside any already-active observers.
+    public func addLoopAutomation(events: [AutomationEvent], startTime: AVAudioTime) throws {
+        try $leftGain.addLoopObserver(events: events, startTime: startTime)
+        try $rightGain.addLoopObserver(events: events, startTime: startTime)
+    }
+
+    /// Remove all loop-batch automation observers registered via addLoopAutomation.
+    public func stopLoopAutomation() {
+        $leftGain.stopLoopAutomation()
+        $rightGain.stopLoopAutomation()
+    }
 }

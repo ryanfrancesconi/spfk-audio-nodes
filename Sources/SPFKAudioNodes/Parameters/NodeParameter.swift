@@ -101,6 +101,10 @@ public class NodeParameter {
 
     public var renderObserverToken: Int?
 
+    /// Tokens for loop-batch automation observers. Multiple may coexist, each covering
+    /// a non-overlapping future time range. Cleared by stopLoopAutomation().
+    public var loopObserverTokens: [Int] = []
+
     /// Automate to a new value using a ramp.
     public func ramp(to value: AUValue, duration: Float, delay: Float = 0, sampleRate: Float) {
         guard let parameter else { return }
