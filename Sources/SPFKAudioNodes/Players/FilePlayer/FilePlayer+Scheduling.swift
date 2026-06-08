@@ -61,21 +61,19 @@ extension FilePlayer {
 
         let frameCount = AVAudioFrameCount(totalFrames)
 
-        let expectedHostTime: UInt64? = renderingMode != .offline
-            ? audioTime.map { $0.offset(seconds: Double(frameCount) / sampleRate).hostTime }
-            : nil
-
         playerNode.scheduleSegment(
             audioFile,
             startingFrame: startFrame,
             frameCount: frameCount,
             at: audioTime,
             completionCallbackType: .dataPlayedBack,
-            completionHandler: { [onComplete] _ in
+            completionHandler: { [weak self, onComplete] _ in
                 guard let onComplete else { return }
-                if let expectedHostTime {
-                    guard mach_absolute_time() >= expectedHostTime else { return }
-                }
+                // isPlaying is set false before playerNode.stop() in stop(), so a
+                // false value here means stop() was called explicitly — suppress the
+                // spurious dataPlayedBack callback that playerNode.stop() triggers.
+                // For natural completion, isPlaying is still true at this point.
+                guard self?.isPlaying == true else { return }
                 onComplete()
             }
         )

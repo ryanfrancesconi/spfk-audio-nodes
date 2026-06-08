@@ -23,9 +23,13 @@ extension FilePlayer {
     public func stop() {
         guard isPlaying else { return }
 
+        // Set isPlaying false BEFORE playerNode.stop() so the completionHandler
+        // can distinguish an explicit stop() (isPlaying == false) from a natural
+        // completion (isPlaying == true). playerNode.stop() fires pending
+        // dataPlayedBack callbacks synchronously on some code paths.
+        isPlaying = false
         playerNode.stop()
 
         lastScheduledTime = nil
-        isPlaying = false
     }
 }
