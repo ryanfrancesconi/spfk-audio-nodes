@@ -3,6 +3,7 @@
 // Revision History at http://github.com/AudioKit/AudioKit/
 
 #import "DSPBase.h"
+#include "DSPBase.hpp"
 #import "ParameterRamper.h"
 #import <map>
 #import <string>

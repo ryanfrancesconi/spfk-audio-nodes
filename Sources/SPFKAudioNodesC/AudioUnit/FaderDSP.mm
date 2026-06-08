@@ -4,6 +4,7 @@
 
 #include "FaderDSP.h"
 #include "DSPBase.h"
+#include "DSPBase.hpp"
 #include "ParameterRamper.h"
 
 struct FaderDSP : DSPBase {
