@@ -60,14 +60,14 @@ public struct RegionFadeDescription {
     public func gainAt(playbackOffset: TimeInterval) -> AUValue {
         if fade.inTime > 0, playbackOffset < fade.inTime {
             let t = Float(playbackOffset / fade.inTime)
-            return Float(fade.inTaper.gainAt(t: Double(t))) * maximumGain
+            return Float(fade.inTaper.gain(at: Double(t))) * maximumGain
         }
         if fade.outTime > 0 {
             let fileDuration = segmentDuration + playbackOffset
             let fadeOutStart = fileDuration - fade.outTime
             if playbackOffset >= fadeOutStart {
                 let s = Float((playbackOffset - fadeOutStart) / fade.outTime)
-                return Float(fade.outTaper.fadeOutGainAt(s: Double(s))) * maximumGain
+                return Float(fade.outTaper.fadeOutGain(at: Double(s))) * maximumGain
             }
         }
         return maximumGain
