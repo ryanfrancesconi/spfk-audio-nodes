@@ -27,6 +27,10 @@ public final class AudioTrack {
     /// effects
     public private(set) lazy var audioUnitChain: AudioUnitChain = .init(delegate: self)
 
+    /// Host AU state forwarded to the effects chain after each insert or un-bypass.
+    /// Set by the workspace coordinator after creation.
+    public var hostAUState: HostAUState?
+
     public let delegate: AudioTrackDelegate?
 
     public init(delegate: AudioTrackDelegate?) async throws {
@@ -55,6 +59,15 @@ extension AudioTrack: @preconcurrency AudioUnitChainDelegate {
     }
 
     public func audioUnitChain(_ audioUnitChain: AudioUnitChain, event: AudioUnitChainEvent) async {
+        switch event {
+        case .didInsert, .didBypass(_, isBypassed: false):
+            if let hostAUState {
+                let data = await audioUnitChain.data
+                await data.update(hostAUState: hostAUState)
+            }
+        default:
+            break
+        }
         await delegate?.audioUnitChain(audioUnitChain, event: event)
     }
 
