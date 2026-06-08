@@ -47,60 +47,9 @@ extension NodeParameter {
     /// - Parameter events: automation curve
     /// - Parameter startTime: optional time to start automation
     public func automate(events: [AutomationEvent], startTime: AVAudioTime? = nil) throws {
-        guard let avAudioNode else {
-            throw NSError(description: "Underlying AVAudioNode is nil")
-        }
-
-        guard let parameter else {
-            throw NSError(description: "Parameter is not associated")
-        }
-
-        guard let engine = avAudioNode.engine else {
-            throw NSError(description: "\(avAudioNode.debugDescription) engine is nil")
-        }
-
-        let lastRenderTime = self.lastRenderTime
-
-        var startTime = startTime ?? lastRenderTime
-
-        // This is only for realtime automation - not rendering
-        if !engine.isInManualRenderingMode,
-           startTime.isHostTimeValid, !startTime.isSampleTimeValid
-        {
-            // Convert a hostTime based AVAudioTime to sampleTime which is needed for automation to work
-            let startTimeSeconds = AVAudioTime.seconds(forHostTime: startTime.hostTime)
-            let lastTimeSeconds = AVAudioTime.seconds(forHostTime: lastRenderTime.hostTime)
-            let offsetSeconds = startTimeSeconds - lastTimeSeconds
-
-            startTime = lastRenderTime.offset(seconds: offsetSeconds)
-        }
-
-        // this must be valid
-        guard startTime.isSampleTimeValid else {
-            throw NSError(description: "\(avAudioNode.debugDescription) startTime.isSampleTimeValid is false")
-        }
-
         stopAutomation()
-
-        let observer: AURenderObserver = try events.withUnsafeBufferPointer { automationPtr in
-            guard let automationBaseAddress = automationPtr.baseAddress else {
-                throw NSError(description: "Empty automation events buffer")
-            }
-
-            guard let observer = ParameterAutomationGetRenderObserver(
-                parameter.address,
-                avAudioNode.auAudioUnit.scheduleParameterBlock,
-                sampleRate,
-                Double(startTime.sampleTime),
-                automationBaseAddress,
-                events.count
-            ) else {
-                throw NSError(description: "Failed to create render observer for \(avAudioNode.auAudioUnit.audioUnitName ?? "Audio Unit")")
-            }
-
-            return observer
-        }
-
+        let observer = try makeRenderObserver(events: events, startTime: startTime ?? lastRenderTime)
+        guard let avAudioNode else { return }
         renderObserverToken = avAudioNode.auAudioUnit.token(byAddingRenderObserver: observer)
     }
 
@@ -114,57 +63,21 @@ extension NodeParameter {
 
     /// Register a loop-batch automation observer WITHOUT removing any existing observers.
     /// The token is appended to `loopObserverTokens` for later bulk removal via `stopLoopAutomation()`.
-    /// Use this when scheduling automation for future loop iterations alongside already-active
-    /// observers that cover earlier (non-overlapping) time ranges.
+    ///
+    /// Implements a sliding window of 2 active tokens: when a third batch observer is added, the
+    /// oldest token is removed. By that point its audio has fully played (the prefill fires on the
+    /// second-to-last segment, so the prior batch has one segment remaining when the next is queued
+    /// and is fully expired by the time the third arrives). This bounds `loopObserverTokens` to at
+    /// most 2 entries regardless of session length.
     public func addLoopObserver(events: [AutomationEvent], startTime: AVAudioTime) throws {
-        guard let avAudioNode else {
-            throw NSError(description: "Underlying AVAudioNode is nil")
+        // Sliding window: evict the oldest expired observer when a third batch is scheduled.
+        if loopObserverTokens.count >= 2 {
+            let expiredToken = loopObserverTokens.removeFirst()
+            avAudioNode?.auAudioUnit.removeRenderObserver(expiredToken)
         }
 
-        guard let parameter else {
-            throw NSError(description: "Parameter is not associated")
-        }
-
-        guard let engine = avAudioNode.engine else {
-            throw NSError(description: "\(avAudioNode.debugDescription) engine is nil")
-        }
-
-        let lastRenderTime = self.lastRenderTime
-
-        var startTime = startTime
-
-        if !engine.isInManualRenderingMode,
-           startTime.isHostTimeValid, !startTime.isSampleTimeValid
-        {
-            let startTimeSeconds = AVAudioTime.seconds(forHostTime: startTime.hostTime)
-            let lastTimeSeconds = AVAudioTime.seconds(forHostTime: lastRenderTime.hostTime)
-            let offsetSeconds = startTimeSeconds - lastTimeSeconds
-            startTime = lastRenderTime.offset(seconds: offsetSeconds)
-        }
-
-        guard startTime.isSampleTimeValid else {
-            throw NSError(description: "\(avAudioNode.debugDescription) startTime.isSampleTimeValid is false")
-        }
-
-        let observer: AURenderObserver = try events.withUnsafeBufferPointer { automationPtr in
-            guard let automationBaseAddress = automationPtr.baseAddress else {
-                throw NSError(description: "Empty automation events buffer")
-            }
-
-            guard let observer = ParameterAutomationGetRenderObserver(
-                parameter.address,
-                avAudioNode.auAudioUnit.scheduleParameterBlock,
-                sampleRate,
-                Double(startTime.sampleTime),
-                automationBaseAddress,
-                events.count
-            ) else {
-                throw NSError(description: "Failed to create loop render observer for \(avAudioNode.auAudioUnit.audioUnitName ?? "Audio Unit")")
-            }
-
-            return observer
-        }
-
+        let observer = try makeRenderObserver(events: events, startTime: startTime)
+        guard let avAudioNode else { return }
         let token = avAudioNode.auAudioUnit.token(byAddingRenderObserver: observer)
         loopObserverTokens.append(token)
     }
@@ -187,5 +100,61 @@ extension NodeParameter {
         let sampleRate = self.sampleRate
         ramp(to: start, duration: ParameterAutomationTiming.primerRampDuration, delay: 0, sampleRate: sampleRate.float)
         ramp(to: target, duration: duration, delay: ParameterAutomationTiming.primerRampDuration, sampleRate: sampleRate.float)
+    }
+
+    // MARK: - Private
+
+    /// Shared render observer factory used by both `automate` and `addLoopObserver`.
+    /// Handles host-to-sample-time conversion for realtime (non-manual-rendering) engines
+    /// and validates that the resolved startTime has a valid sample time before creating
+    /// the C-level observer.
+    private func makeRenderObserver(events: [AutomationEvent], startTime: AVAudioTime) throws -> AURenderObserver {
+        guard let avAudioNode else {
+            throw NSError(description: "Underlying AVAudioNode is nil")
+        }
+
+        guard let parameter else {
+            throw NSError(description: "Parameter is not associated")
+        }
+
+        guard let engine = avAudioNode.engine else {
+            throw NSError(description: "\(avAudioNode.debugDescription) engine is nil")
+        }
+
+        let lastRenderTime = self.lastRenderTime
+        var startTime = startTime
+
+        // Convert a hostTime-only AVAudioTime to sampleTime, which is required for automation.
+        if !engine.isInManualRenderingMode,
+           startTime.isHostTimeValid, !startTime.isSampleTimeValid
+        {
+            let startTimeSeconds = AVAudioTime.seconds(forHostTime: startTime.hostTime)
+            let lastTimeSeconds = AVAudioTime.seconds(forHostTime: lastRenderTime.hostTime)
+            let offsetSeconds = startTimeSeconds - lastTimeSeconds
+            startTime = lastRenderTime.offset(seconds: offsetSeconds)
+        }
+
+        guard startTime.isSampleTimeValid else {
+            throw NSError(description: "\(avAudioNode.debugDescription) startTime.isSampleTimeValid is false")
+        }
+
+        return try events.withUnsafeBufferPointer { automationPtr in
+            guard let automationBaseAddress = automationPtr.baseAddress else {
+                throw NSError(description: "Empty automation events buffer")
+            }
+
+            guard let observer = ParameterAutomationGetRenderObserver(
+                parameter.address,
+                avAudioNode.auAudioUnit.scheduleParameterBlock,
+                sampleRate,
+                Double(startTime.sampleTime),
+                automationBaseAddress,
+                events.count
+            ) else {
+                throw NSError(description: "Failed to create render observer for \(avAudioNode.auAudioUnit.audioUnitName ?? "Audio Unit")")
+            }
+
+            return observer
+        }
     }
 }
