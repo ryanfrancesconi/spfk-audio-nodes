@@ -9,7 +9,7 @@ import Numerics
 
 @testable import SPFKAudioNodes
 
-@Suite(.serialized)
+@Suite
 final class FaderTests: TestCaseModel {
     init() async throws {}
 
