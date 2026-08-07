@@ -519,4 +519,39 @@ final class StreamPlayerTests: TestCaseModel {
         #expect(samples[20000] == 0)
         #expect(samples[25000] == 0)
     }
+
+    /// A range the source cannot quite fill still loops.
+    ///
+    /// **Matroska rounds a segment's duration to its TimecodeScale**, so a losslessly coded track is
+    /// short of the declared range by up to a millisecond — frames the range asks for and the source
+    /// does not have. Owing them left the run waiting on a read that could only return nothing, so
+    /// the repeat queued behind it was never reached and playback stopped at the end of the first
+    /// pass. A lossy track hides this by decoding *longer* than declared, its encoder priming
+    /// covering the deficit, which is why `.mkv` looping worked until FLAC and PCM arrived.
+    @Test func repeatsARangeTheSourceFallsShortOf() async throws {
+        let rate: Double = 44100
+        let loop: TimeInterval = 0.05
+        let loopFrames = Int(loop * rate)
+
+        // Twelve frames short of the range, the deficit the 4.394s FLAC fixture has.
+        let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(loopFrames - 12))
+        let rig = try makeRig(source: source, duration: loop)
+
+        try await rig.player.schedule(from: 0, to: loop)
+        try rig.player.enqueueRepeat()
+        try rig.player.play()
+
+        try await waitForBuffers(rig.player)
+
+        let samples = try render(rig, frameCount: AVAudioFrameCount(loopFrames * 2))
+
+        try #require(samples.count == loopFrames * 2)
+
+        let secondPass = loopFrames - 12
+
+        #expect(samples[secondPass] == 0, "the second pass began at \(samples[secondPass]) rather than 0")
+        #expect(samples[secondPass + 10] == 10, "the second pass is not counting from its start")
+        #expect(source.seekCount >= 2, "the repeat never seeked back")
+    }
+
 }

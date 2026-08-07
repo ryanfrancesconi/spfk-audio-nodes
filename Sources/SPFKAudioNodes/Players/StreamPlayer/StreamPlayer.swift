@@ -537,9 +537,23 @@ extension StreamPlayer {
 
         let written = try run.source.readNextChunk(into: buffer, frameCount: wanted)
 
-        guard written > 0 else { return false }
+        guard written > 0 else {
+            // The source ended on a buffer boundary, so the short read below never came. Nothing to
+            // schedule, but a queued repeat still has to be taken.
+            framesRemaining = 0
+
+            return feedState.withLock { $0.pendingRepeats > 0 }
+        }
 
         framesRemaining -= AVAudioFramePosition(written)
+
+        // A short read is the source ending inside the declared range: Matroska rounds a segment
+        // duration to its TimecodeScale, so a lossless track falls short of it by up to a
+        // millisecond. Without this the last buffer never counts as last — its completion does not
+        // fire, and a queued repeat is never taken.
+        if written < wanted {
+            framesRemaining = 0
+        }
 
         // The anchor is the run's start time and belongs to whichever buffer goes in first;
         // everything after it queues behind with `at: nil`.
