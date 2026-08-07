@@ -68,6 +68,18 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
         /// Held here rather than as a bare property because the handlers fire on arbitrary threads
         /// while `stop` finishes it from the caller's.
         var signal: AsyncStream<Void>.Continuation?
+
+        /// Passes over the range still to be made, beyond the one under way.
+        var pendingRepeats: Int = 0
+
+        /// What a repeat plays. Not the run's own range: playback can begin inside a loop, and that
+        /// first partial pass is not what repeats. Held here rather than on `Run` because the feed
+        /// task is already holding a `Run` by value when the range is stated.
+        var repeatStartFrame: AVAudioFramePosition = 0
+        var repeatRangeFrames: AVAudioFramePosition = 0
+
+        /// Whether a feed task is live. A repeat queued after the range drained has to start one.
+        var isFeeding = false
     }
 
     private let feedState = OSAllocatedUnfairLock(initialState: FeedState())
@@ -82,6 +94,10 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// Handed to the feed task at ``schedule(from:to:audioTime:onComplete:)``; touched nowhere else
     /// once a run is under way.
     private var source: (any SeekablePCMSource)?
+
+    /// The run in progress, so ``enqueueRepeat(onComplete:)`` can start another pass over it.
+    private var currentRun: Run?
+    private var currentSignals: AsyncStream<Void>?
 
     /// Frames of the current range still to be scheduled. Touched only by the feed task.
     private var framesRemaining: AVAudioFramePosition = 0
@@ -351,7 +367,15 @@ extension StreamPlayer {
             return state.generation
         }
 
-        let run = Run(source: source, generation: generation, signal: continuation, onComplete: onComplete)
+        let run = Run(
+            source: source,
+            generation: generation,
+            signal: continuation,
+            onComplete: onComplete
+        )
+
+        currentRun = run
+        currentSignals = signals
 
         // Both on the caller, so a bad seek or an undecodable first packet is *thrown* from
         // `schedule` rather than reported to `eventHandler` after the fact. Everything the caller
@@ -368,8 +392,58 @@ extension StreamPlayer {
         // The whole range fit in the prefill, so there is nothing left to feed.
         guard framesRemaining > 0 else { return }
 
+        startFeeding(run, signals: signals)
+    }
+
+    /// Queues another pass over the current range, after whatever is already scheduled.
+    ///
+    /// The looping counterpart to ``FilePlayer``'s `scheduleSegment(at: nil)`. `AVAudioPlayerNode`
+    /// plays a command with no time immediately after the last one, so a repeat is another pass of
+    /// the same frames rather than anything the caller has to time.
+    ///
+    /// A repeat can arrive after the range has drained and the feed has exited, so this restarts it
+    /// when nothing is live.
+    public func enqueueRepeat(
+        from startingTime: TimeInterval? = nil,
+        to endingTime: TimeInterval? = nil,
+        onComplete: (@Sendable () -> Void)? = nil
+    ) throws {
+        guard let run = currentRun, let signals = currentSignals, let sampleRate else {
+            throw NSError(file: #file, function: #function, description: "Nothing is scheduled to repeat")
+        }
+
+        let start = startingTime ?? playbackRange?.lowerBound ?? 0
+        let end = endingTime ?? playbackRange?.upperBound ?? 0
+
+        guard end > start else {
+            throw NSError(file: #file, function: #function, description: "invalid repeat range \(start)...\(end)")
+        }
+
+        let shouldStart = feedState.withLock { state -> Bool in
+            guard state.generation == run.generation else { return false }
+
+            state.repeatStartFrame = AVAudioFramePosition(start * sampleRate)
+            state.repeatRangeFrames = AVAudioFramePosition((end - start) * sampleRate)
+            state.pendingRepeats += 1
+
+            guard state.isFeeding == false else { return false }
+
+            state.isFeeding = true
+            return true
+        }
+
+        guard shouldStart else { return }
+
+        startFeeding(run, signals: signals)
+    }
+
+    private func startFeeding(_ run: Run, signals: AsyncStream<Void>) {
+        feedState.withLock { $0.isFeeding = true }
+
         feedTask = Task(priority: .userInitiated) { [weak self] in
             await self?.feed(run, signals: signals)
+
+            self?.feedState.withLock { $0.isFeeding = false }
         }
     }
 
@@ -401,7 +475,27 @@ extension StreamPlayer {
             let state = feedState.withLock { $0 }
 
             guard state.generation == run.generation else { return }
-            guard framesRemaining > 0 else { return }
+
+            if framesRemaining <= 0 {
+                let next = feedState.withLock { pending -> (AVAudioFramePosition, AVAudioFramePosition)? in
+                    guard pending.pendingRepeats > 0 else { return nil }
+
+                    pending.pendingRepeats -= 1
+                    return (pending.repeatStartFrame, pending.repeatRangeFrames)
+                }
+
+                guard let (repeatStart, repeatFrames) = next else { return }
+
+                do {
+                    try run.source.seek(toFrame: repeatStart)
+                } catch {
+                    run.signal.finish()
+                    eventHandler?(.failed(error))
+                    return
+                }
+
+                framesRemaining = repeatFrames
+            }
 
             guard state.buffersInFlight < Self.targetBuffersInFlight else {
                 // The node has all the lead it wants. Wait for it to say it took one — the stream
@@ -468,7 +562,9 @@ extension StreamPlayer {
                 onComplete?()
             }
 
-            return false
+            // Keep going when another pass is queued; the loop's own check seeks back and refills
+            // `framesRemaining`. Returning false here would end the run mid-loop.
+            return feedState.withLock { $0.pendingRepeats > 0 }
         }
 
         let signal = run.signal

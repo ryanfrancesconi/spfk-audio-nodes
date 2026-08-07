@@ -439,6 +439,66 @@ final class StreamPlayerTests: TestCaseModel {
         #expect(source.readCount == atStop, "the feed kept decoding after stop()")
     }
 
+    // MARK: - Looping
+
+    /// What a loop is made of: the same range again, after what is already queued.
+    ///
+    /// Offline, which is the point — `at: nil` chaining needs no host time, and host time is
+    /// ignored in manual rendering mode. The transport's own loop path cannot be tested here.
+    @Test func repeatsTheRangeInPlace() async throws {
+        let rate: Double = 44100
+        let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 4))
+        let rig = try makeRig(source: source, duration: 4)
+
+        // A range short enough that several passes fit in one render.
+        let loop: TimeInterval = 0.05
+        let loopFrames = Int(loop * rate)
+
+        try await rig.player.schedule(from: 0, to: loop)
+        try rig.player.enqueueRepeat()
+        try rig.player.enqueueRepeat()
+        try rig.player.play()
+
+        try await waitForBuffers(rig.player)
+
+        let samples = try render(rig, frameCount: AVAudioFrameCount(loopFrames * 3))
+
+        try #require(samples.count == loopFrames * 3)
+
+        // The ramp is the source frame index, so each pass must start over at 0.
+        for pass in 0 ..< 3 {
+            let start = pass * loopFrames
+
+            #expect(samples[start] == 0, "pass \(pass) began at \(samples[start]) rather than 0")
+            #expect(samples[start + 10] == 10, "pass \(pass) is not counting from its start")
+        }
+    }
+
+    /// A repeat queued after the range has drained has to restart the feed, not land on a task that
+    /// already exited.
+    @Test func repeatsAfterTheRangeHasDrained() async throws {
+        let rate: Double = 44100
+        let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 4))
+        let rig = try makeRig(source: source, duration: 4)
+
+        let loop: TimeInterval = 0.05
+        let loopFrames = Int(loop * rate)
+
+        try await rig.player.schedule(from: 0, to: loop)
+        try rig.player.play()
+
+        // Long enough that the first pass is fully fed and the feed task has exited.
+        try await wait(sec: 0.3)
+
+        try rig.player.enqueueRepeat()
+
+        let samples = try render(rig, frameCount: AVAudioFrameCount(loopFrames * 2))
+
+        try #require(samples.count == loopFrames * 2)
+
+        #expect(samples[loopFrames] == 0, "the second pass began at \(samples[loopFrames]) rather than 0")
+    }
+
     /// A source that runs out inside the requested range ends the run rather than stalling it — a
     /// container states a segment length, not an audio track length, so a short read is ordinary.
     @Test func endsWhenTheSourceRunsOut() async throws {

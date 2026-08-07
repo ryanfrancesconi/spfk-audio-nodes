@@ -69,6 +69,20 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
         onComplete: (@Sendable () -> Void)?
     ) async throws
 
+    /// Queues a pass over `startingTime...endingTime`, after whatever is already scheduled.
+    ///
+    /// How a loop iterates. `AVAudioPlayerNode` plays a command with no time immediately after the
+    /// last one, so neither conformer has to time anything against a clock — which is also why this
+    /// works in manual rendering mode, where host time is ignored.
+    ///
+    /// **The range is stated rather than reused**: playback can begin inside a loop, and that first
+    /// partial pass is not what repeats.
+    func enqueueRepeat(
+        from startingTime: TimeInterval?,
+        to endingTime: TimeInterval?,
+        onComplete: (@Sendable () -> Void)?
+    ) throws
+
     func play() throws
 
     func stop()

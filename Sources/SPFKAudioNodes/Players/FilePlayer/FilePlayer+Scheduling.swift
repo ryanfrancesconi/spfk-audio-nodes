@@ -38,6 +38,19 @@ extension FilePlayer {
         try scheduleSegment(at: audioTime, onComplete: onComplete)
     }
 
+    /// Queues a pass over `startingTime...endingTime`, after whatever is already scheduled.
+    ///
+    /// `AVAudioPlayerNode` plays a command with no time immediately after the last one, so looping
+    /// is repeated segments rather than segments timed against a clock.
+    public func enqueueRepeat(
+        from startingTime: TimeInterval? = nil,
+        to endingTime: TimeInterval? = nil,
+        onComplete: (@Sendable () -> Void)? = nil
+    ) throws {
+        try updateTimeRange(from: startingTime, to: endingTime)
+        try scheduleSegment(at: nil, onComplete: onComplete)
+    }
+
     /// a segment must be scheduled before you can play
     private func scheduleSegment(at audioTime: AVAudioTime?, onComplete: (@Sendable () -> Void)? = nil) throws {
         guard let audioFile else {
