@@ -14,6 +14,8 @@ Extracted from [SPFKAudioWorkspace](https://github.com/ryanfrancesconi/spfk-audi
 - **Parameter System** - `NodeParameter` wrapping `AUParameter` with safe optional access, value clamping, ramping, and automation recording
 - **Automation** - Cubic spline interpolation curves, editable automation points with gain/dB conversion, and region fade descriptions
 - **File Playback** - Single-file player with editable playback ranges, sample-accurate scheduling, and host-time or sample-time modes
+- **Stream Playback** - Buffer-queue player for containers `AVAudioFile` cannot open, fed by an external decoder with backpressure and prefill
+- **Source Abstraction** - `TransportSourcePlayer`, the surface a transport drives whether the audio came from a file or a stream
 - **Metronome** - Beat/bar/subdivision click player with configurable sound sets and mute support
 - **Offline Rendering** - Actor-based `EngineRenderer` for bouncing audio engine graphs to files in manual rendering mode
 - **Track Model** - `AudioTrack` with mixer, audio unit chain, and connect/detach lifecycle
@@ -42,7 +44,9 @@ SPFKAudioNodes
   |   |-- FaderParameter+      Parameter definitions and C bridge
   |
   |-- Players/                 Audio playback nodes
+  |   |-- TransportSourcePlayer What a transport needs from the thing it plays
   |   |-- FilePlayer/          Single-file AVAudioPlayerNode scheduling
+  |   |-- StreamPlayer/        Decoder-fed buffer queue for non-AVFoundation containers
   |   |-- Metronome/           Beat/bar/subdivision click player
   |
   |-- Mixing/                  Track and mixer infrastructure
@@ -76,6 +80,37 @@ try player.load(url: audioFileURL)
 try player.schedule(from: 1.0, to: 3.0)  // play seconds 1-3
 try player.play()
 ```
+
+### Stream Playback
+
+For a container `AVAudioFile` cannot open — Matroska, chiefly. `StreamPlayer` takes any
+`SeekablePCMSource` and keeps the node's queue fed from it, so the decoder lives in whichever
+package owns the container rather than here.
+
+```swift
+let player = StreamPlayer()
+try player.load(source: decoder, url: url, duration: duration)
+
+try await player.schedule(from: 1.0, to: 3.0, when: 0, hostTime: nil, onComplete: nil)
+try player.play()
+```
+
+`schedule` is `async` here and synchronous on `FilePlayer`: a file is armed by handing the node a
+segment, whereas a stream has to decode before there is anything to hand over. Starting the node
+before that has happened plays an empty queue.
+
+### Looping either source
+
+`enqueueRepeat` queues a pass after whatever is already scheduled. `AVAudioPlayerNode` plays a
+command with no time immediately after the last one, so neither player times anything against a
+clock — which is also why this works in manual rendering mode, where host time is ignored.
+
+```swift
+try player.enqueueRepeat(from: loopStart, to: loopEnd, onComplete: nil)
+```
+
+The range is stated rather than reused from the current run, because playback can begin inside a
+loop and that first partial pass is not what repeats.
 
 ### Offline Rendering
 
