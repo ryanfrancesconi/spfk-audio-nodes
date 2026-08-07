@@ -21,44 +21,6 @@ Extracted from [SPFKAudioWorkspace](https://github.com/ryanfrancesconi/spfk-audi
 - **Track Model** - `AudioTrack` with mixer, audio unit chain, and connect/detach lifecycle
 - **Mixer** - `MixerWrapper` around `AVAudioMixerNode` with volume and pan control
 
-## Architecture
-
-```
-SPFKAudioNodes
-  |-- AudioUnit/               AUAudioUnit infrastructure
-  |   |-- AudioEngineNodeAU    Protocol for AU-backed engine nodes
-  |   |-- Internals/           SPFKAudioUnit base class, AU extensions
-  |
-  |-- Parameters/              Parameter system
-  |   |-- NodeParameter        AUParameter wrapper with safe access and ramping
-  |   |-- Parameter            Property wrapper for NodeParameter values
-  |   |-- NodeParameterDef     Parameter specification (address, range, unit)
-  |
-  |-- Automation/              Parameter automation curves
-  |   |-- AutomationCurve      Cubic spline interpolated gain curves
-  |   |-- AutomationPoint      Editable point with gain/dB and UI position
-  |   |-- RegionFadeDescription Fade-in/out region descriptors
-  |
-  |-- Fader/                   Stereo fader DSP node
-  |   |-- Fader                Stereo gain AU with parameter automation
-  |   |-- FaderParameter+      Parameter definitions and C bridge
-  |
-  |-- Players/                 Audio playback nodes
-  |   |-- TransportSourcePlayer What a transport needs from the thing it plays
-  |   |-- FilePlayer/          Single-file AVAudioPlayerNode scheduling
-  |   |-- StreamPlayer/        Decoder-fed buffer queue for non-AVFoundation containers
-  |   |-- Metronome/           Beat/bar/subdivision click player
-  |
-  |-- Mixing/                  Track and mixer infrastructure
-  |   |-- AudioTrack           Track model with mixer and audio unit chain
-  |   |-- Mixable              Protocol for nodes with volume/pan
-  |   |-- MixerWrapper         AVAudioMixerNode wrapper
-  |
-  |-- Rendering/               Offline rendering
-      |-- EngineRenderer       Actor-based offline bounce to file
-      |-- EngineRendererOptions Sample rate, bit depth, channel config
-```
-
 ## Usage
 
 ### Fader
