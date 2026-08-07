@@ -16,7 +16,11 @@ import Testing
 /// right frames reach the node, in order, from the position asked for — and a codec in the middle
 /// would only add a way for the test to fail for reasons that are not that. The real decoder is
 /// exercised where it lives, in `spfk-audio-conversion`.
-private final class RampSource: SeekablePCMSource {
+///
+/// `@unchecked Sendable` on the terms ``SeekablePCMSource`` asks for, and that the real conformers
+/// take: this holds a read position, so **one consumer may drive it and no more**. The player's feed
+/// task is that consumer; a test reads the counters below only after awaiting it.
+private final class RampSource: @unchecked Sendable, SeekablePCMSource {
     let processingFormat: AVAudioFormat
     let totalFrameCount: AVAudioFramePosition
 
