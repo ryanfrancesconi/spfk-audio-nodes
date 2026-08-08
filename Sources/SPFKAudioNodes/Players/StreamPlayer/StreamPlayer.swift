@@ -155,7 +155,17 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 
     public var isLoaded: Bool { processingFormat != nil }
 
-    public internal(set) var isPlaying: Bool = false
+    /// Told to play and not since stopped, whatever the engine is doing.
+    ///
+    /// Everything inside this class reads this rather than ``isPlaying``, for the same reason
+    /// ``FilePlayer`` does: the engine can stop underneath a player, and a `stop()` guarded on
+    /// "is audio flowing" would then never clear the latch or cancel the feed.
+    public internal(set) var isPlaybackArmed: Bool = false
+
+    /// Whether audio is actually being produced.
+    public var isPlaying: Bool {
+        isPlaybackArmed && playerNode.engine?.isRunning == true
+    }
 
     public internal(set) var lastScheduledTime: AVAudioTime?
 
@@ -247,7 +257,7 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     }
 
     public func unload() {
-        if isPlaying {
+        if isPlaybackArmed {
             stop()
         }
 
@@ -632,14 +642,14 @@ extension StreamPlayer {
             throw NSError(description: "StreamPlayer.play() Engine isn't running or available - play() canceled for \(url?.lastPathComponent ?? "nil")")
         }
 
-        if isPlaying {
+        if isPlaybackArmed {
             playerNode.stop()
         }
 
         // nil means play immediately; the run's start time was given to the first buffer.
         playerNode.play(at: nil)
 
-        isPlaying = true
+        isPlaybackArmed = true
     }
 
     /// Stops playback and cancels the run, including any decode already on its way.
@@ -652,7 +662,7 @@ extension StreamPlayer {
         feedTask?.cancel()
         feedTask = nil
 
-        guard isPlaying else {
+        guard isPlaybackArmed else {
             // Still clear the run, or a stale generation's callbacks outlive it.
             endRun()
 
@@ -665,7 +675,7 @@ extension StreamPlayer {
         // own, since cancellation is observed rather than immediate.
         endRun()
 
-        isPlaying = false
+        isPlaybackArmed = false
         playerNode.stop()
 
         lastScheduledTime = nil

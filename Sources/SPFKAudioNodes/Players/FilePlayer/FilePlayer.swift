@@ -119,7 +119,21 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 
     // MARK: - Public Options
 
-    public internal(set) var isPlaying: Bool = false
+    /// Told to play and not since stopped, whatever the engine is doing.
+    ///
+    /// Every decision inside this class reads this rather than ``isPlaying``: the engine can stop
+    /// underneath a player at any time — AVFoundation does it on a configuration change — and a
+    /// `stop()` guarded on "is audio flowing" would then never clear the latch.
+    public internal(set) var isPlaybackArmed: Bool = false
+
+    /// Whether audio is actually being produced.
+    ///
+    /// A player node keeps reporting itself as playing after the engine stops, and so does the
+    /// latch — measured. A caller asking "is this playing" means audio, so this answers for the
+    /// engine as well.
+    public var isPlaying: Bool {
+        isPlaybackArmed && playerNode.engine?.isRunning == true
+    }
 
     public var isLoaded: Bool { audioFile != nil }
 
@@ -150,7 +164,7 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     ///
     /// It's possible this is no longer necessary with updates in macOS - needs testing
     public func load(audioFile: AVAudioFile) throws {
-        if isPlaying {
+        if isPlaybackArmed {
             stop()
         }
 
@@ -169,7 +183,7 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     }
 
     public func unload() {
-        if isPlaying {
+        if isPlaybackArmed {
             stop()
         }
 

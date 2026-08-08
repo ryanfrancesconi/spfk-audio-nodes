@@ -105,11 +105,12 @@ extension FilePlayer {
             completionCallbackType: .dataPlayedBack,
             completionHandler: { [weak self, onComplete] _ in
                 guard let onComplete else { return }
-                // isPlaying is set false before playerNode.stop() in stop(), so a
-                // false value here means stop() was called explicitly — suppress the
-                // spurious dataPlayedBack callback that playerNode.stop() triggers.
-                // For natural completion, isPlaying is still true at this point.
-                guard self?.isPlaying == true else { return }
+                // The latch is cleared before playerNode.stop() in stop(), so a false value here
+                // means stop() was called explicitly — suppress the spurious dataPlayedBack
+                // callback that playerNode.stop() triggers. For natural completion it is still
+                // true. Deliberately not `isPlaying`: a stopped engine would suppress a genuine
+                // completion.
+                guard self?.isPlaybackArmed == true else { return }
                 onComplete()
             }
         )

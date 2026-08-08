@@ -27,7 +27,15 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
 
     var isLoaded: Bool { get }
 
+    /// Whether audio is actually being produced — false once the engine stops, however it stopped.
     var isPlaying: Bool { get }
+
+    /// Told to play and not since stopped, whatever the engine is doing.
+    ///
+    /// AVFoundation stops the engine on a configuration change without telling either player, so
+    /// by the time a host reacts ``isPlaying`` is already false. This is what still says playback
+    /// was live, and is how a host decides whether to resume once the engine is back.
+    var isPlaybackArmed: Bool { get }
 
     var isScheduled: Bool { get }
 
