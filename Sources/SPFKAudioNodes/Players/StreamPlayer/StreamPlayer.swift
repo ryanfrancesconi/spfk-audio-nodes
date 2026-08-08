@@ -80,6 +80,27 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 
         /// Whether a feed task is live. A repeat queued after the range drained has to start one.
         var isFeeding = false
+
+        /// Fences the current run's callbacks and drops everything scoped to it.
+        ///
+        /// Both `schedule` and `stop` end a run and differ only in what replaces the signal, so
+        /// this is one definition rather than two blocks that have to be kept in step — the
+        /// queued repeats used to be cleared by neither, and survived into the following run.
+        ///
+        /// - Returns: the new generation.
+        mutating func endRun(replacingSignalWith newSignal: AsyncStream<Void>.Continuation?) -> Int {
+            generation += 1
+            buffersInFlight = 0
+
+            signal?.finish()
+            signal = newSignal
+
+            pendingRepeats = 0
+            repeatStartFrame = 0
+            repeatRangeFrames = 0
+
+            return generation
+        }
     }
 
     private let feedState = OSAllocatedUnfairLock(initialState: FeedState())
@@ -197,9 +218,11 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     ///   - duration: the source's length. Taken as a parameter because a container states it in its
     ///     header, where the decoded stream only reveals it by being read to the end.
     public func load(source: some SeekablePCMSource, url: URL, duration: TimeInterval) throws {
-        if isPlaying {
-            stop()
-        }
+        // Unconditionally, not `if isPlaying`: a run armed by `schedule` and never played still has
+        // a feed task decoding against the outgoing source, and `stop()` cancels before its own
+        // `isPlaying` guard for exactly that reason. Taking the shape FilePlayer uses here left the
+        // old task reading a source this method is in the middle of replacing.
+        stop()
 
         guard duration > 0 else {
             throw NSError(file: #file, function: #function, description: "\(url.lastPathComponent) reports no duration")
@@ -359,13 +382,7 @@ extension StreamPlayer {
 
         // Clears any run already in flight: its completion callbacks are about to arrive and must
         // not refill the queue on this one's behalf.
-        let generation = feedState.withLock { state -> Int in
-            state.generation += 1
-            state.buffersInFlight = 0
-            state.signal?.finish()
-            state.signal = continuation
-            return state.generation
-        }
+        let generation = feedState.withLock { $0.endRun(replacingSignalWith: continuation) }
 
         let run = Run(
             source: source,
@@ -443,7 +460,14 @@ extension StreamPlayer {
         feedTask = Task(priority: .userInitiated) { [weak self] in
             await self?.feed(run, signals: signals)
 
-            self?.feedState.withLock { $0.isFeeding = false }
+            // Only this run's task may clear the flag. A superseded one exiting after a newer run
+            // started would otherwise report the live feed as idle, and `enqueueRepeat` would
+            // start a second task against a source that allows exactly one consumer.
+            self?.feedState.withLock { state in
+                guard state.generation == run.generation else { return }
+
+                state.isFeeding = false
+            }
         }
     }
 
@@ -655,12 +679,12 @@ extension StreamPlayer {
     /// the old generation, and a continuation left live would keep the loop parked on a stream
     /// nothing will ever yield to again.
     private func endRun() {
-        feedState.withLock { state in
-            state.generation += 1
-            state.buffersInFlight = 0
-            state.signal?.finish()
-            state.signal = nil
-        }
+        feedState.withLock { _ = $0.endRun(replacingSignalWith: nil) }
+
+        // The run is over, so nothing may repeat it. Left set, `enqueueRepeat` would pass its
+        // `currentRun` guard and then quietly do nothing on the generation check.
+        currentRun = nil
+        currentSignals = nil
     }
 }
 

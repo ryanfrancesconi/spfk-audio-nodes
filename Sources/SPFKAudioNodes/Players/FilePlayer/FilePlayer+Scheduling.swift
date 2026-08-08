@@ -35,37 +35,60 @@ extension FilePlayer {
             try updateTimeRange(from: startingTime, to: endingTime)
         }
 
-        try scheduleSegment(at: audioTime, onComplete: onComplete)
+        guard let playbackRange else {
+            throw NSError(file: #file, function: #function, description: "invalid edit range")
+        }
+
+        try scheduleSegment(over: playbackRange, at: audioTime, onComplete: onComplete)
     }
 
     /// Queues a pass over `startingTime...endingTime`, after whatever is already scheduled.
     ///
     /// `AVAudioPlayerNode` plays a command with no time immediately after the last one, so looping
     /// is repeated segments rather than segments timed against a clock.
+    /// **A repeat states its range rather than redefining the player's.** `playbackRange` is what
+    /// the run plays and what `currentTime` is measured against; a loop pass is a separate span, and
+    /// folding the two together moved the playhead's origin and — called with no arguments — reset
+    /// the range to the whole file, so a trimmed player looped everything. ``StreamPlayer`` states
+    /// it this way, and the protocol requires the two to answer alike.
     public func enqueueRepeat(
         from startingTime: TimeInterval? = nil,
         to endingTime: TimeInterval? = nil,
         onComplete: (@Sendable () -> Void)? = nil
     ) throws {
-        try updateTimeRange(from: startingTime, to: endingTime)
-        try scheduleSegment(at: nil, onComplete: onComplete)
+        guard let playbackRange else {
+            throw NSError(file: #file, function: #function, description: "Nothing is scheduled to repeat")
+        }
+
+        let lowerBound = startingTime ?? playbackRange.lowerBound
+        let upperBound = endingTime ?? playbackRange.upperBound
+
+        guard lowerBound < upperBound else {
+            throw NSError(file: #file, function: #function, description: "invalid repeat range \(lowerBound)...\(upperBound)")
+        }
+
+        try scheduleSegment(over: lowerBound ... upperBound, at: nil, onComplete: onComplete)
     }
 
     /// a segment must be scheduled before you can play
-    private func scheduleSegment(at audioTime: AVAudioTime?, onComplete: (@Sendable () -> Void)? = nil) throws {
+    private func scheduleSegment(
+        over range: ClosedRange<TimeInterval>,
+        at audioTime: AVAudioTime?,
+        onComplete: (@Sendable () -> Void)? = nil
+    ) throws {
         guard let audioFile else {
             throw NSError(file: #file, function: #function, description: "No audio file is loaded")
         }
 
-        guard let playbackRange else {
-            throw NSError(file: #file, function: #function, description: "invalid edit range")
+        // A repeat carries no time — it queues behind what is already scheduled — so it must not
+        // clear the run's start time and report the player as unscheduled.
+        if let audioTime {
+            lastScheduledTime = audioTime
         }
 
-        lastScheduledTime = audioTime
-
         let sampleRate: Double = audioFile.fileFormat.sampleRate
-        let startFrame = AVAudioFramePosition(playbackRange.lowerBound * sampleRate)
-        let endFrame = AVAudioFramePosition(playbackRange.upperBound * sampleRate)
+        let startFrame = AVAudioFramePosition(range.lowerBound * sampleRate)
+        let endFrame = AVAudioFramePosition(range.upperBound * sampleRate)
         let totalFrames = endFrame - startFrame
 
         guard totalFrames > 0 else {

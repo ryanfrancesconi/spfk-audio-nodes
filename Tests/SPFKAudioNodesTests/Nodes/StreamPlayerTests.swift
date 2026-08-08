@@ -558,4 +558,66 @@ final class StreamPlayerTests: TestCaseModel {
         #expect(source.seekCount >= 2, "the repeat never seeked back")
     }
 
+
+    // MARK: - Run teardown
+
+    /// A repeat is per-run state, and the run it belonged to is gone.
+    ///
+    /// The repeat count and its frame range used to be cleared by neither `stop()` nor the next
+    /// `schedule()`, so a loop queued on one run played a pass over its range once the *following*
+    /// run had drained — audio from a range the caller had moved on from.
+    @Test func aQueuedRepeatDoesNotSurviveStop() async throws {
+        let rate: Double = 44100
+        let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 8))
+        let rig = try makeRig(source: source, duration: 8)
+
+        try await rig.player.schedule(from: 0, to: 1)
+        try rig.player.play()
+
+        try await waitForBuffers(rig.player)
+
+        try rig.player.enqueueRepeat(from: 0, to: 1)
+
+        rig.player.stop()
+
+        // A range with nothing in common with the one that was queued to repeat.
+        try await rig.player.schedule(from: 4, to: 5)
+        try rig.player.play()
+
+        try await waitForBuffers(rig.player)
+
+        let samples = try render(rig, frameCount: AVAudioFrameCount(rate * 1.6))
+
+        try #require(samples.count >= Int(rate * 1.2))
+
+        #expect(samples[0] == Float(4 * rate), "the second run did not start where it was asked to")
+
+        // Past the end of a one second range there is nothing left to play.
+        let afterRange = samples[Int(rate * 1.1)]
+        #expect(afterRange == 0, "the previous run's repeat played into this one, at frame \(afterRange)")
+    }
+
+    /// `schedule` arms a feed immediately, so a player that was never played still has a task
+    /// decoding. Loading has to take the source back from it.
+    @Test func loadingOverAnArmedRunReleasesTheOutgoingSource() async throws {
+        let first = RampSource()
+        let rig = try makeRig(source: first, duration: 4)
+
+        try await rig.player.schedule(from: 0, to: 4)
+        try await wait(sec: 0.3)
+
+        let readsAtLoad = first.readCount
+
+        let second = RampSource()
+        try rig.player.load(source: second, url: URL(fileURLWithPath: "/tmp/second.mka"), duration: 4)
+
+        // Consumption is what wakes a feed task that is parked on a full queue.
+        try rig.player.play()
+        try await wait(sec: 0.4)
+        _ = try render(rig, frameCount: 8192)
+        try await wait(sec: 0.4)
+
+        #expect(first.readCount == readsAtLoad, "the outgoing source was read again after load()")
+    }
+
 }
