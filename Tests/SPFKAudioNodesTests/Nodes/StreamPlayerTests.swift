@@ -84,6 +84,93 @@ private final class RampSource: @unchecked Sendable, SeekablePCMSource {
     }
 }
 
+/// Reports whether more than one caller was ever inside it at once.
+///
+/// ``SeekablePCMSource`` allows exactly one consumer and nothing enforces it, so an overlap is not a
+/// wrong sample — it is a decode against a reader another thread is tearing down. The read is slowed
+/// deliberately so the window is wide enough to land in on purpose rather than by luck.
+private final class ConcurrencyProbeSource: @unchecked Sendable, SeekablePCMSource {
+    let processingFormat: AVAudioFormat
+    let totalFrameCount: AVAudioFramePosition
+
+    /// How long one read occupies the source. Longer than the poll interval a test waits on, so a
+    /// call made after observing a read in flight is still inside that same read.
+    private let readDelay: TimeInterval
+
+    private struct Probe {
+        var callers = 0
+        var peakCallers = 0
+        var reads = 0
+    }
+
+    private let probe = OSAllocatedUnfairLock(initialState: Probe())
+
+    private(set) var framePosition: AVAudioFramePosition = 0
+
+    /// The most callers observed inside the source simultaneously. Anything above 1 is the invariant
+    /// broken.
+    var peakConcurrentCallers: Int { probe.withLock { $0.peakCallers } }
+
+    /// Whether a caller is inside the source right now.
+    var isInUse: Bool { probe.withLock { $0.callers > 0 } }
+
+    var readCount: Int { probe.withLock { $0.reads } }
+
+    init(sampleRate: Double = 44100, frames: AVAudioFramePosition = 44100 * 3600, readDelay: TimeInterval = 0.25) {
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
+            fatalError("standard mono format is always constructible")
+        }
+
+        processingFormat = format
+        totalFrameCount = frames
+        self.readDelay = readDelay
+    }
+
+    private func beginCall() {
+        probe.withLock { state in
+            state.callers += 1
+            state.peakCallers = max(state.peakCallers, state.callers)
+        }
+    }
+
+    private func endCall() {
+        probe.withLock { $0.callers -= 1 }
+    }
+
+    func seek(toFrame frame: AVAudioFramePosition) throws {
+        beginCall()
+        defer { endCall() }
+
+        framePosition = max(0, min(frame, totalFrameCount))
+    }
+
+    func readNextChunk(into buffer: AVAudioPCMBuffer, frameCount: AVAudioFrameCount) throws -> AVAudioFrameCount {
+        beginCall()
+        defer { endCall() }
+
+        probe.withLock { $0.reads += 1 }
+
+        // Blocking rather than awaiting, because the real read is a blocking decode: the feed task
+        // sits inside `copyNextSampleBuffer` with no suspension point for cancellation to land on.
+        Thread.sleep(forTimeInterval: readDelay)
+
+        let available = AVAudioFrameCount(max(0, totalFrameCount - framePosition))
+        let written = min(frameCount, available)
+
+        buffer.frameLength = written
+
+        guard written > 0, let channel = buffer.floatChannelData?[0] else { return 0 }
+
+        for index in 0 ..< Int(written) {
+            channel[index] = Float(framePosition + AVAudioFramePosition(index))
+        }
+
+        framePosition += AVAudioFramePosition(written)
+
+        return written
+    }
+}
+
 /// Offline manual rendering throughout: it needs no audio hardware and, more usefully, it is
 /// deterministic — the engine renders exactly the frames asked for, so "which frame came out" is a
 /// question with one answer.
@@ -95,7 +182,7 @@ final class StreamPlayerTests: TestCaseModel {
         let format: AVAudioFormat
     }
 
-    private func makeRig(source: RampSource, duration: TimeInterval) throws -> Rig {
+    private func makeRig(source: some SeekablePCMSource, duration: TimeInterval) throws -> Rig {
         let engine = AVAudioEngine()
         let player = StreamPlayer()
         let format = source.processingFormat
@@ -620,4 +707,58 @@ final class StreamPlayerTests: TestCaseModel {
         #expect(first.readCount == readsAtLoad, "the outgoing source was read again after load()")
     }
 
+    // MARK: - Single consumer
+
+    /// What `TransportPlayer.restart()` does — `stop()` then `schedule()` against the **same**
+    /// source — with a read deliberately in flight across it.
+    ///
+    /// `stop()` cancels the feed task and returns; cancellation is observed, so the read is still
+    /// under way. The generation fence invalidates that run's *callbacks* and reaches no further, so
+    /// what protects the source is `schedule` waiting for the task before it seeks. In the real
+    /// source the overlapping call rebuilds the `AVAssetReader` the other thread is pulling sample
+    /// buffers from, which is a crash rather than a wrong sample.
+    @Test func restartingDoesNotPutASecondConsumerOnTheSource() async throws {
+        let source = ConcurrencyProbeSource()
+        let rig = try makeRig(source: source, duration: 3600)
+
+        try await rig.player.schedule(from: 0, to: 3600)
+        try rig.player.play()
+
+        // The prefill happens on the caller, so a call in flight now belongs to the feed task.
+        try await wait(for: source.isInUse, timeout: 5)
+
+        rig.player.stop()
+        try await rig.player.schedule(from: 0, to: 3600)
+
+        #expect(
+            source.peakConcurrentCallers == 1,
+            "\(source.peakConcurrentCallers) callers were inside the source at once — the restart seeked while the outgoing feed was mid-read"
+        )
+    }
+
+    /// The wait `schedule` performs is its only suspension point, and a second `schedule` can
+    /// complete inside it — `@MainActor` serializes the calls but not across an `await`. The
+    /// superseded call must not go on to seek a source the newer one has taken.
+    @Test func concurrentSchedulesDoNotOverlapOnTheSource() async throws {
+        let source = ConcurrencyProbeSource()
+        let rig = try makeRig(source: source, duration: 3600)
+
+        try await rig.player.schedule(from: 0, to: 3600)
+        try rig.player.play()
+
+        try await wait(for: source.isInUse, timeout: 5)
+
+        // Both land while the feed task is inside a read, so both have to wait it out.
+        async let first: Void = rig.player.schedule(from: 0, to: 3600)
+        async let second: Void = rig.player.schedule(from: 10, to: 3600)
+
+        // One of them is superseded and throws; which one is the race and is not the assertion.
+        _ = try? await first
+        _ = try? await second
+
+        #expect(
+            source.peakConcurrentCallers == 1,
+            "\(source.peakConcurrentCallers) callers were inside the source at once — a superseded schedule seeked anyway"
+        )
+    }
 }

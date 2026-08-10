@@ -380,10 +380,14 @@ extension StreamPlayer {
         }
 
         // The previous run is the other consumer of the source, so it has to be gone before this one
-        // seeks. Cancellation is observed rather than immediate, but the generation fence below is
-        // what actually makes its remaining callbacks inert.
-        feedTask?.cancel()
-        feedTask = nil
+        // seeks. **Cancelling is not enough**: cancellation is observed, and a read already inside
+        // the decoder stays there until it returns. The generation fence makes that run's callbacks
+        // inert but cannot reach a decode under way, so a seek here would rebuild the reader another
+        // thread is pulling sample buffers from — a source that permits one consumer, driven by two.
+        // Left in place rather than cleared: a second `schedule` landing during the wait below has to
+        // find the same task and wait for it too, and `startFeeding` replaces the handle anyway.
+        let outgoing = feedTask
+        outgoing?.cancel()
 
         // Newest-only: a signal that arrives while the loop is busy scheduling means "the node took
         // one", and the loop re-reads the count anyway. Queueing them would only make it spin
@@ -391,8 +395,22 @@ extension StreamPlayer {
         let (signals, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
 
         // Clears any run already in flight: its completion callbacks are about to arrive and must
-        // not refill the queue on this one's behalf.
+        // not refill the queue on this one's behalf. Before the wait below rather than after, so a
+        // feed parked on the old signal is released by that signal finishing and does not depend on
+        // cancellation alone to wake.
         let generation = feedState.withLock { $0.endRun(replacingSignalWith: continuation) }
+
+        // Bounded by one chunk: the task either returns from its read and exits on the cancellation
+        // check, or wakes from the finished signal.
+        await outgoing?.value
+
+        // The only suspension point on this path, so a second `schedule` can complete inside it —
+        // `TransportPlayer` is `@MainActor`, which serializes the calls but not across an `await`.
+        // That call has already taken the source; carrying on would seek underneath it, which is the
+        // two-consumer bug this wait exists to prevent.
+        guard feedState.withLock({ $0.generation }) == generation else {
+            throw NSError(file: #file, function: #function, description: "Superseded by a later schedule")
+        }
 
         let run = Run(
             source: source,
@@ -652,15 +670,23 @@ extension StreamPlayer {
         isPlaybackArmed = true
     }
 
-    /// Stops playback and cancels the run, including any decode already on its way.
+    /// Stops playback and cancels the run.
+    ///
+    /// Returns without waiting for the feed task, so a decode already inside the source may still be
+    /// running when it does. ``schedule(from:to:audioTime:onComplete:)`` waits for that task before
+    /// it seeks; ``unload()`` does not, so a caller tearing the graph down immediately after this can
+    /// still meet one read in flight.
     public func stop() {
         // **Cancelled before the `isPlaying` guard, not after.** A run is armed by `schedule` and
         // starts feeding immediately, so a player that was scheduled but never played still has a
         // task decoding and calling `scheduleBuffer`. Returning early there left it running while
         // the host tore the graph down to load the next file — which crashes inside the engine, and
         // looks like a fault in whatever was loaded next rather than in what was left behind.
+        //
+        // **The handle is kept, not cleared.** Cancelling does not end a read already inside the
+        // source, and the next `schedule` is what waits for it — dropping the handle here leaves it
+        // nothing to wait on, which is the restart race with the fix apparently applied.
         feedTask?.cancel()
-        feedTask = nil
 
         guard isPlaybackArmed else {
             // Still clear the run, or a stale generation's callbacks outlive it.
