@@ -99,6 +99,11 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
             repeatStartFrame = 0
             repeatRangeFrames = 0
 
+            // The outgoing task clears this only for its own generation, which has just moved, so
+            // a superseded run would otherwise leave it set with nothing feeding — and
+            // `enqueueRepeat` refuses to start a feed while it is.
+            isFeeding = false
+
             return generation
         }
     }
@@ -227,12 +232,17 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     ///   - url: what the source is reading, for a caller that identifies a loaded player by file.
     ///   - duration: the source's length. Taken as a parameter because a container states it in its
     ///     header, where the decoded stream only reveals it by being read to the end.
-    public func load(source: some SeekablePCMSource, url: URL, duration: TimeInterval) throws {
+    public func load(source: some SeekablePCMSource, url: URL, duration: TimeInterval) async throws {
         // Unconditionally, not `if isPlaying`: a run armed by `schedule` and never played still has
         // a feed task decoding against the outgoing source, and `stop()` cancels before its own
         // `isPlaying` guard for exactly that reason. Taking the shape FilePlayer uses here left the
         // old task reading a source this method is in the middle of replacing.
         stop()
+
+        // Cancelling does not end the read the task is inside, and everything below is state that
+        // read is still using — `processingFormat` and `source` most of all. Bounded by one chunk.
+        await feedTask?.value
+        feedTask = nil
 
         guard duration > 0 else {
             throw NSError(file: #file, function: #function, description: "\(url.lastPathComponent) reports no duration")
@@ -256,13 +266,25 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
         self.source = source
     }
 
-    public func unload() {
+    /// Releases the source, once nothing is reading it.
+    ///
+    /// **`async` because the wait is the point.** `stop()` cancels the feed task and returns, and a
+    /// read already inside the decoder stays there until it returns — so a synchronous teardown
+    /// hands the source back, reassigns ``processingFormat``/``framesRemaining``/``runAnchor`` and
+    /// detaches the node while that read is still running. Awaiting the task is what makes
+    /// "unloaded" mean nothing is in flight. Bounded by one chunk decode.
+    public func unload() async {
         if isPlaybackArmed {
             stop()
         }
 
+        // Cancel then await, in that order and both: cancellation makes the loop exit at its next
+        // check, and the await is what waits for the read it is currently inside. Awaiting a
+        // finished task is free.
         feedTask?.cancel()
+        await feedTask?.value
         feedTask = nil
+
         endRun()
 
         url = nil
@@ -672,10 +694,11 @@ extension StreamPlayer {
 
     /// Stops playback and cancels the run.
     ///
-    /// Returns without waiting for the feed task, so a decode already inside the source may still be
-    /// running when it does. ``schedule(from:to:audioTime:onComplete:)`` waits for that task before
-    /// it seeks; ``unload()`` does not, so a caller tearing the graph down immediately after this can
-    /// still meet one read in flight.
+    /// **Returns without waiting for the feed task**, so a decode already inside the source may
+    /// still be running when it does — deliberately, because this is on the playback path and must
+    /// not block. Everything that goes on to touch the source waits instead:
+    /// ``schedule(from:to:audioTime:onComplete:)`` before it seeks, ``unload()`` and ``load(source:url:duration:)``
+    /// before they release or replace it.
     public func stop() {
         // **Cancelled before the `isPlaying` guard, not after.** A run is armed by `schedule` and
         // starts feeding immediately, so a player that was scheduled but never played still has a
@@ -729,8 +752,8 @@ extension StreamPlayer {
 extension StreamPlayer: AudioEngineNode {
     public var outputNode: AVAudioNode? { playerNode }
 
-    public func detachNodes() throws {
-        unload()
+    public func detachNodes() async throws {
+        await unload()
 
         try detachIONodes()
     }

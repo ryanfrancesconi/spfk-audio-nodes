@@ -195,7 +195,7 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 extension FilePlayer: AudioEngineNode {
     public var outputNode: AVAudioNode? { playerNode }
 
-    public func detachNodes() throws {
+    public func detachNodes() async throws {
         unload()
 
         try detachIONodes()

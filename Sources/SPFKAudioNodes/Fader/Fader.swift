@@ -96,7 +96,9 @@ public class Fader: AudioEngineNodeAU, TypeDescribable {
     }
 
     deinit {
-        try? detachNodes()
+        // `detachNodes()` is async and a deinit cannot await. This is its whole body for a Fader,
+        // which has no background reader to wait for.
+        try? detachIONodes()
 
         Log.debug("- { \(typeName) }")
     }

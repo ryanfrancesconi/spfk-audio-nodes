@@ -95,7 +95,13 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
 
     func stop()
 
-    func unload()
+    /// Releases what is loaded and everything reading it.
+    ///
+    /// **`async` for the same conformer `schedule` is async for.** ``StreamPlayer`` owns a feed task
+    /// that may be inside a blocking decode, and only awaiting it ends that read — `stop()` cancels,
+    /// which is observed rather than immediate. ``FilePlayer`` has nothing in flight and satisfies
+    /// this with its synchronous body unchanged.
+    func unload() async
 }
 
 // MARK: - Conformances

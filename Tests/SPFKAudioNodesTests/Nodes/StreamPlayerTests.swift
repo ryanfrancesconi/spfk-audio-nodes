@@ -182,7 +182,7 @@ final class StreamPlayerTests: TestCaseModel {
         let format: AVAudioFormat
     }
 
-    private func makeRig(source: some SeekablePCMSource, duration: TimeInterval) throws -> Rig {
+    private func makeRig(source: some SeekablePCMSource, duration: TimeInterval) async throws -> Rig {
         let engine = AVAudioEngine()
         let player = StreamPlayer()
         let format = source.processingFormat
@@ -195,7 +195,7 @@ final class StreamPlayerTests: TestCaseModel {
         // came out" assertion read as an off-by-a-lot failure.
         engine.connect(player.playerNode, to: engine.outputNode, format: format)
 
-        try player.load(source: source, url: URL(fileURLWithPath: "/tmp/ramp.mka"), duration: duration)
+        try await player.load(source: source, url: URL(fileURLWithPath: "/tmp/ramp.mka"), duration: duration)
 
         try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096)
         try engine.start()
@@ -243,7 +243,7 @@ final class StreamPlayerTests: TestCaseModel {
 
     @Test func playsFromTheStartOfTheSource() async throws {
         let source = RampSource()
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         try await rig.player.schedule(from: 0, to: 4)
         try rig.player.play()
@@ -264,7 +264,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// has to get from a seek.
     @Test func playsFromAnOffsetStartTime() async throws {
         let source = RampSource()
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         let start: TimeInterval = 1
         let startFrame = Float(start * rig.format.sampleRate)
@@ -287,7 +287,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// across buffer boundaries without dropping or repeating a frame.
     @Test func rendersContinuouslyAcrossManyBuffers() async throws {
         let source = RampSource()
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         try await rig.player.schedule(from: 0, to: 4)
         try rig.player.play()
@@ -318,7 +318,7 @@ final class StreamPlayerTests: TestCaseModel {
     @Test func readsAheadByABoundedAmountRatherThanDrainingTheSource() async throws {
         // An hour, so an unbounded pump would have to read ~160,000,000 frames before stopping.
         let source = RampSource(frames: 44100 * 3600)
-        let rig = try makeRig(source: source, duration: 3600)
+        let rig = try await makeRig(source: source, duration: 3600)
 
         try await rig.player.schedule(from: 0, to: 3600)
         try rig.player.play()
@@ -338,7 +338,7 @@ final class StreamPlayerTests: TestCaseModel {
 
     @Test func stopEndsPlayback() async throws {
         let source = RampSource()
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         try await rig.player.schedule(from: 0, to: 4)
         try rig.player.play()
@@ -357,7 +357,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// run's queued audio.
     @Test func reschedulingDiscardsTheEarlierRun() async throws {
         let source = RampSource()
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         try await rig.player.schedule(from: 0, to: 4)
         try rig.player.play()
@@ -393,7 +393,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// silence. Remove the prefill and this test reads zeros where the ramp should be.
     @Test func schedulingPutsAudioInTheQueueBeforeItReturns() async throws {
         let source = RampSource()
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         try await rig.player.schedule(from: 0, to: 4)
         try rig.player.play()
@@ -412,7 +412,7 @@ final class StreamPlayerTests: TestCaseModel {
         let source = RampSource()
         source.failsSeek = true
 
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         await #expect(throws: (any Error).self) {
             try await rig.player.schedule(from: 0, to: 4)
@@ -429,7 +429,7 @@ final class StreamPlayerTests: TestCaseModel {
         // Past the prefill, so the failure lands in the feed task rather than in `schedule`.
         source.failsReadNumber = StreamPlayer.prefillBuffers + 1
 
-        let rig = try makeRig(source: source, duration: 3600)
+        let rig = try await makeRig(source: source, duration: 3600)
 
         let reported = OSAllocatedUnfairLock(initialState: false)
 
@@ -450,7 +450,7 @@ final class StreamPlayerTests: TestCaseModel {
         let source = RampSource()
         source.failsReadNumber = 1
 
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         let reported = OSAllocatedUnfairLock(initialState: false)
 
@@ -474,7 +474,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// because "roughly bounded" is what the broken version also looked like at four seconds.
     @Test func theFeedParksAtTheQueueDepthWhileNothingIsConsumed() async throws {
         let source = RampSource(frames: 44100 * 3600)
-        let rig = try makeRig(source: source, duration: 3600)
+        let rig = try await makeRig(source: source, duration: 3600)
 
         try await rig.player.schedule(from: 0, to: 3600)
 
@@ -495,7 +495,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// wake and refill — which is what the completion handler's signal is for.
     @Test func theFeedResumesWhenTheNodeConsumes() async throws {
         let source = RampSource(frames: 44100 * 3600)
-        let rig = try makeRig(source: source, duration: 3600)
+        let rig = try await makeRig(source: source, duration: 3600)
 
         try await rig.player.schedule(from: 0, to: 3600)
 
@@ -514,7 +514,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// Stopping has to end the feed, not leave a task decoding into a node that will never play it.
     @Test func stopEndsTheFeed() async throws {
         let source = RampSource(frames: 44100 * 3600)
-        let rig = try makeRig(source: source, duration: 3600)
+        let rig = try await makeRig(source: source, duration: 3600)
 
         try await rig.player.schedule(from: 0, to: 3600)
         try rig.player.play()
@@ -539,7 +539,7 @@ final class StreamPlayerTests: TestCaseModel {
     @Test func repeatsTheRangeInPlace() async throws {
         let rate: Double = 44100
         let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 4))
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         // A range short enough that several passes fit in one render.
         let loop: TimeInterval = 0.05
@@ -570,7 +570,7 @@ final class StreamPlayerTests: TestCaseModel {
     @Test func repeatsAfterTheRangeHasDrained() async throws {
         let rate: Double = 44100
         let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 4))
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         let loop: TimeInterval = 0.05
         let loopFrames = Int(loop * rate)
@@ -594,7 +594,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// container states a segment length, not an audio track length, so a short read is ordinary.
     @Test func endsWhenTheSourceRunsOut() async throws {
         let source = RampSource(frames: 20000)
-        let rig = try makeRig(source: source, duration: 4)
+        let rig = try await makeRig(source: source, duration: 4)
 
         try await rig.player.schedule(from: 0, to: 4)
         try rig.player.play()
@@ -626,7 +626,7 @@ final class StreamPlayerTests: TestCaseModel {
 
         // Twelve frames short of the range, the deficit the 4.394s FLAC fixture has.
         let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(loopFrames - 12))
-        let rig = try makeRig(source: source, duration: loop)
+        let rig = try await makeRig(source: source, duration: loop)
 
         try await rig.player.schedule(from: 0, to: loop)
         try rig.player.enqueueRepeat()
@@ -656,7 +656,7 @@ final class StreamPlayerTests: TestCaseModel {
     @Test func aQueuedRepeatDoesNotSurviveStop() async throws {
         let rate: Double = 44100
         let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 8))
-        let rig = try makeRig(source: source, duration: 8)
+        let rig = try await makeRig(source: source, duration: 8)
 
         try await rig.player.schedule(from: 0, to: 1)
         try rig.player.play()
@@ -688,7 +688,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// decoding. Loading has to take the source back from it.
     @Test func loadingOverAnArmedRunReleasesTheOutgoingSource() async throws {
         let first = RampSource()
-        let rig = try makeRig(source: first, duration: 4)
+        let rig = try await makeRig(source: first, duration: 4)
 
         try await rig.player.schedule(from: 0, to: 4)
         try await wait(sec: 0.3)
@@ -696,7 +696,7 @@ final class StreamPlayerTests: TestCaseModel {
         let readsAtLoad = first.readCount
 
         let second = RampSource()
-        try rig.player.load(source: second, url: URL(fileURLWithPath: "/tmp/second.mka"), duration: 4)
+        try await rig.player.load(source: second, url: URL(fileURLWithPath: "/tmp/second.mka"), duration: 4)
 
         // Consumption is what wakes a feed task that is parked on a full queue.
         try rig.player.play()
@@ -719,7 +719,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// buffers from, which is a crash rather than a wrong sample.
     @Test func restartingDoesNotPutASecondConsumerOnTheSource() async throws {
         let source = ConcurrencyProbeSource()
-        let rig = try makeRig(source: source, duration: 3600)
+        let rig = try await makeRig(source: source, duration: 3600)
 
         try await rig.player.schedule(from: 0, to: 3600)
         try rig.player.play()
@@ -736,21 +736,196 @@ final class StreamPlayerTests: TestCaseModel {
         )
     }
 
-    /// The wait `schedule` performs is its only suspension point, and a second `schedule` can
-    /// complete inside it — `@MainActor` serializes the calls but not across an `await`. The
-    /// superseded call must not go on to seek a source the newer one has taken.
-    @Test func concurrentSchedulesDoNotOverlapOnTheSource() async throws {
+    /// Teardown releases the source, so a read still inside it is decoding against something its
+    /// owner has let go of. Unlike the restart case there is no second *caller* to count — the
+    /// question is whether the call returns while one is in flight.
+    ///
+    /// In the real source that read is inside `AVAssetReader.copyNextSampleBuffer()`, and what
+    /// follows the release is the reader being deallocated underneath it.
+    @Test func unloadDoesNotReturnWhileAReadIsInFlight() async throws {
         let source = ConcurrencyProbeSource()
-        let rig = try makeRig(source: source, duration: 3600)
+        let rig = try await makeRig(source: source, duration: 3600)
+
+        try await rig.player.schedule(from: 0, to: 3600)
+        try rig.player.play()
+
+        // The prefill happens on the caller, so a call in flight now belongs to the feed task.
+        try await wait(for: source.isInUse, timeout: 5)
+
+        await rig.player.unload()
+
+        #expect(
+            source.isInUse == false,
+            "unload() returned with a read still inside the source — the feed is decoding against a source its owner has released"
+        )
+    }
+
+    /// `load()` replaces the source rather than releasing it, and the outgoing one is dropped the
+    /// moment the new one is assigned. Same window as ``unloadDoesNotReturnWhileAReadIsInFlight``,
+    /// reached by the path a file switch actually takes.
+    @Test func loadDoesNotReturnWhileAReadIsInFlightOnTheOutgoingSource() async throws {
+        let first = ConcurrencyProbeSource()
+        let rig = try await makeRig(source: first, duration: 3600)
+
+        try await rig.player.schedule(from: 0, to: 3600)
+        try rig.player.play()
+
+        try await wait(for: first.isInUse, timeout: 5)
+
+        let second = ConcurrencyProbeSource()
+        try await rig.player.load(source: second, url: URL(fileURLWithPath: "/tmp/second.mka"), duration: 3600)
+
+        #expect(
+            first.isInUse == false,
+            "load() replaced the source with a read still inside the outgoing one"
+        )
+    }
+
+    /// `detachNodes()` reaches `unload()` through the `AudioEngineNode` conformance, which is the
+    /// path `TransportPlayer` tears a player down by. Separate from the `unload()` probe because it
+    /// is the protocol requirement that would have to change for a fix to reach here.
+    @Test func detachingNodesDoesNotReturnWhileAReadIsInFlight() async throws {
+        let source = ConcurrencyProbeSource()
+        let rig = try await makeRig(source: source, duration: 3600)
 
         try await rig.player.schedule(from: 0, to: 3600)
         try rig.player.play()
 
         try await wait(for: source.isInUse, timeout: 5)
 
+        // `detachIONodes` requires a stopped engine, and a host tearing a graph down has stopped it
+        // by this point. The feed task is not the engine's and is unaffected.
+        rig.engine.stop()
+
+        try await rig.player.detachNodes()
+
+        #expect(
+            source.isInUse == false,
+            "detachNodes() tore the node down with a read still inside the source"
+        )
+    }
+
+    /// A repeat queued while `schedule` is parked on its wait must not start a second feed against
+    /// the source the newer run is taking.
+    ///
+    /// The reasoning is that `endRun` bumps the generation *before* the wait while `currentRun` is
+    /// only replaced after it, so the repeat's generation check fails and it starts nothing. That is
+    /// reasoning; this measures it.
+    @Test func aRepeatQueuedDuringAScheduleWaitDoesNotOverlapOnTheSource() async throws {
+        let source = ConcurrencyProbeSource()
+        let rig = try await makeRig(source: source, duration: 3600)
+
+        try await rig.player.schedule(from: 0, to: 3600)
+        try rig.player.play()
+
+        try await wait(for: source.isInUse, timeout: 5)
+
+        // The player rather than the rig: `Rig` holds a non-Sendable `AVAudioEngine`, so sending the
+        // whole thing into an `async let` is a data race in the Swift 6 language mode.
+        let player = rig.player
+
+        // Lands while the feed task is inside a read, so it parks on the wait.
+        async let rescheduled: Void = player.schedule(from: 10, to: 3600)
+
+        // Inside that wait, which is where the repeat has to be harmless.
+        try await wait(sec: 0.05)
+        try? rig.player.enqueueRepeat()
+
+        _ = try? await rescheduled
+
+        #expect(
+            source.peakConcurrentCallers == 1,
+            "\(source.peakConcurrentCallers) callers were inside the source at once — a repeat started a feed across the schedule wait"
+        )
+    }
+
+    /// A run whose whole range fits in the prefill starts no feed task of its own, so it depends on
+    /// the superseded run's state having been cleared. `isFeeding` is the one field `endRun` does not
+    /// reset, and only the feed task's own trailing block clears it — which bails when the generation
+    /// has moved.
+    ///
+    /// Independent of the schedule wait: what strands the flag is a superseded task, not a race.
+    /// Measured at the source rather than at the node: taking a repeat means seeking back, so the
+    /// seek count answers "did a feed start" without a rendered frame in the way. What reaches the
+    /// node afterwards is a separate question, and one `AVAudioPlayerNode`'s own queue semantics
+    /// make a poor instrument for this one.
+    @Test func aRepeatIsTakenOnARunThatSupersededALongerOne() async throws {
+        let rate: Double = 44100
+        let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 8))
+        let rig = try await makeRig(source: source, duration: 8)
+
+        let loop: TimeInterval = 0.05
+
+        // Long enough to start a feed task, which is then superseded rather than allowed to finish.
+        try await rig.player.schedule(from: 0, to: 8)
+
+        rig.player.stop()
+
+        // Short enough to fit entirely in the prefill, so this run reaches `startFeeding` never.
+        try await rig.player.schedule(from: 0, to: loop)
+
+        try #require(source.seekCount == 2, "one seek per schedule")
+
+        try rig.player.enqueueRepeat(from: 1, to: 1 + loop)
+
+        // Long enough that a feed task, had one started, has taken the repeat and seeked.
+        try await wait(sec: 0.5)
+
+        #expect(
+            source.seekCount == 3,
+            "the repeat never seeked back — the superseded run left isFeeding set, so enqueueRepeat refused to start a feed"
+        )
+    }
+
+    /// Superseding a run does not take back the audio it already queued.
+    ///
+    /// `schedule` ends the outgoing run and fences its callbacks, but the node keeps whatever was
+    /// handed to it — only `playerNode.stop()` discards that, and `schedule` does not call it. So a
+    /// caller that re-schedules without stopping hears the prefill of a range it has moved on from,
+    /// ahead of the range it asked for.
+    ///
+    /// `reschedulingDiscardsTheEarlierRun` does not cover this: it stops in between, which is what
+    /// `TransportPlayer.restart()` happens to do.
+    @Test func reschedulingWithoutStoppingDiscardsTheEarlierRunsQueuedAudio() async throws {
+        let rate: Double = 44100
+        let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 8))
+        let rig = try await makeRig(source: source, duration: 8)
+
+        try await rig.player.schedule(from: 0, to: 8)
+
+        let start: TimeInterval = 4
+        try await rig.player.schedule(from: start, to: 8)
+        try rig.player.play()
+
+        let samples = try render(rig, frameCount: 256)
+
+        try #require(samples.count == 256)
+
+        #expect(
+            samples[0] == Float(start * rate),
+            "the run began at frame \(samples[0]) — the superseded run's buffers are still queued in the node"
+        )
+    }
+
+    /// The wait `schedule` performs is its only suspension point, and a second `schedule` can
+    /// complete inside it — `@MainActor` serializes the calls but not across an `await`. The
+    /// superseded call must not go on to seek a source the newer one has taken.
+    @Test func concurrentSchedulesDoNotOverlapOnTheSource() async throws {
+        let source = ConcurrencyProbeSource()
+        let rig = try await makeRig(source: source, duration: 3600)
+
+        try await rig.player.schedule(from: 0, to: 3600)
+        try rig.player.play()
+
+        try await wait(for: source.isInUse, timeout: 5)
+
+        // The player rather than the rig: `Rig` holds a non-Sendable `AVAudioEngine`, so sending the
+        // whole thing into an `async let` is a data race in the Swift 6 language mode.
+        let player = rig.player
+
         // Both land while the feed task is inside a read, so both have to wait it out.
-        async let first: Void = rig.player.schedule(from: 0, to: 3600)
-        async let second: Void = rig.player.schedule(from: 10, to: 3600)
+        async let first: Void = player.schedule(from: 0, to: 3600)
+        async let second: Void = player.schedule(from: 10, to: 3600)
 
         // One of them is superseded and throws; which one is the race and is not the assertion.
         _ = try? await first
