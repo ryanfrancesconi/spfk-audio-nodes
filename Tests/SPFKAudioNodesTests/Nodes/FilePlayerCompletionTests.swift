@@ -49,11 +49,10 @@ final class FilePlayerCompletionTests: TestCaseModel {
         player.playerNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
             guard let channel = buffer.floatChannelData?[0] else { return }
 
-            var peak: Float = 0
-
-            for frame in 0 ..< Int(buffer.frameLength) {
-                peak = max(peak, abs(channel[frame]))
-            }
+            // Reduced into a `let` before the lock is taken: the pointer is only valid for this
+            // callback, and a `var` accumulator would be captured by the closure below it.
+            let peak = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
+                .reduce(Float(0)) { max($0, abs($1)) }
 
             peaks.withLock { $0.append(peak) }
         }
@@ -101,14 +100,17 @@ final class FilePlayerCompletionTests: TestCaseModel {
         let first = OSAllocatedUnfairLock(initialState: 0)
         let second = OSAllocatedUnfairLock(initialState: 0)
 
+        // The lock rather than the rig: only this is Sendable, and it is all the polling reads.
+        let peaks = rig.peaks
+
         try rig.player.schedule(from: 0, to: 1) { first.withLock { $0 += 1 } }
         try rig.player.play()
 
         // The first run is genuinely playing before the second is scheduled.
-        let heardFirst = try await wait { rig.peaks.withLock { $0.contains { $0 > 0.05 } } }
+        let heardFirst = try await wait { peaks.withLock { $0.contains { $0 > 0.05 } } }
         try #require(heardFirst, "the first run never produced audio")
 
-        rig.peaks.withLock { $0.removeAll() }
+        peaks.withLock { $0.removeAll() }
 
         try rig.player.schedule(from: 2, to: 3) { second.withLock { $0 += 1 } }
         try rig.player.play()
@@ -121,7 +123,7 @@ final class FilePlayerCompletionTests: TestCaseModel {
 
         // The third second of the file, which is what the second run asked for. Anything below this
         // is the first run's tail still draining through the tap.
-        let heardSecond = rig.peaks.withLock { $0.contains { $0 > 0.25 } }
+        let heardSecond = peaks.withLock { $0.contains { $0 > 0.25 } }
         #expect(heardSecond, "the second run never played — its segment was cleared before it started")
     }
 
@@ -176,11 +178,12 @@ final class FilePlayerCompletionTests: TestCaseModel {
         defer { teardown(rig, url) }
 
         let count = OSAllocatedUnfairLock(initialState: 0)
+        let peaks = rig.peaks
 
         try rig.player.schedule(from: 0, to: 3) { count.withLock { $0 += 1 } }
         try rig.player.play()
 
-        let heard = try await wait { rig.peaks.withLock { $0.contains { $0 > 0.05 } } }
+        let heard = try await wait { peaks.withLock { $0.contains { $0 > 0.05 } } }
         try #require(heard, "the run never produced audio")
 
         rig.player.stop()
