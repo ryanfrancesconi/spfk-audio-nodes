@@ -65,6 +65,35 @@ final class FilePlayerRepeatTests: TestCaseModel {
         return samples
     }
 
+    /// A repeat queued after the run is under way still plays, which is how looping feeds itself:
+    /// every pass after the first is queued from a prefill callback, mid-playback.
+    ///
+    /// Only a repeat may do this. A `schedule` supersedes the run instead of queueing behind it.
+    @Test func aRepeatQueuedWhilePlayingStillPlays() async throws {
+        let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)
+        let rig = try makeRig(url: url)
+
+        // The third second only, so a pass that played anything else says which.
+        try rig.player.schedule(from: 2, to: 3)
+        try rig.player.play()
+
+        let firstHalf = try render(rig, frameCount: AVAudioFrameCount(sampleRate / 2))
+        try #require(firstHalf.first == FilePlayerTestSupport.step(2))
+
+        try rig.player.enqueueRepeat()
+
+        // Past the end of the first pass and into the repeat.
+        let rest = try render(rig, frameCount: AVAudioFrameCount(sampleRate))
+
+        // A repeat that never queued leaves silence here rather than the range again.
+        let intoRepeat = rest[rest.count - Int(sampleRate / 4)]
+
+        #expect(intoRepeat == FilePlayerTestSupport.step(2), "the repeat queued while playing never played")
+
+        rig.engine.stop()
+        try? FileManager.default.removeItem(at: url)
+    }
+
     /// With no arguments a repeat plays the range again — not the whole file.
     @Test func repeatWithNoArgumentsKeepsTheTrimmedRange() async throws {
         let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)
