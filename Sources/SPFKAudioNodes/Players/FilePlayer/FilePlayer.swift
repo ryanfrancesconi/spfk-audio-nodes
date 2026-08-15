@@ -1,6 +1,7 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
 
 import AVFoundation
+import os
 import SPFKAUHost
 import SPFKBase
 
@@ -125,6 +126,22 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// underneath a player at any time — AVFoundation does it on a configuration change — and a
     /// `stop()` guarded on "is audio flowing" would then never clear the latch.
     public internal(set) var isPlaybackArmed: Bool = false
+
+    /// Identifies the run a scheduled segment belongs to.
+    ///
+    /// An unfair lock rather than a bare `var` because it is read from the node's `@Sendable`
+    /// completion handlers, which arrive on arbitrary threads and cannot await. ``StreamPlayer``
+    /// fences its own callbacks the same way.
+    private let runState = OSAllocatedUnfairLock(initialState: 0)
+
+    /// The run a completion handler must belong to for its `onComplete` to be delivered.
+    var currentRun: Int { runState.withLock { $0 } }
+
+    /// Supersedes the current run, so callbacks captured under the previous value stay inert
+    /// however late they arrive.
+    func beginRun() {
+        runState.withLock { $0 += 1 }
+    }
 
     /// Whether audio is actually being produced.
     ///

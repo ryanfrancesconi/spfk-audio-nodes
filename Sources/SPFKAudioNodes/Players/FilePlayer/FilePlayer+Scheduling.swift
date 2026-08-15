@@ -81,10 +81,21 @@ extension FilePlayer {
         }
 
         // A repeat carries no time — it queues behind what is already scheduled — so it must not
-        // clear the run's start time and report the player as unscheduled.
+        // clear the run's start time and report the player as unscheduled, and it belongs to the
+        // run it repeats rather than starting one.
         if let audioTime {
+            // Supersede whatever is playing here rather than in play(), which reaches the node
+            // only after this segment is queued and would clear it along with the old one.
+            if isPlaybackArmed {
+                stop()
+            }
+
+            beginRun()
+
             lastScheduledTime = audioTime
         }
+
+        let run = currentRun
 
         let sampleRate: Double = audioFile.fileFormat.sampleRate
         let startFrame = AVAudioFramePosition(range.lowerBound * sampleRate)
@@ -104,13 +115,16 @@ extension FilePlayer {
             at: audioTime,
             completionCallbackType: .dataPlayedBack,
             completionHandler: { [weak self, onComplete] _ in
-                guard let onComplete else { return }
-                // The latch is cleared before playerNode.stop() in stop(), so a false value here
-                // means stop() was called explicitly — suppress the spurious dataPlayedBack
-                // callback that playerNode.stop() triggers. For natural completion it is still
-                // true. Deliberately not `isPlaying`: a stopped engine would suppress a genuine
-                // completion.
-                guard self?.isPlaybackArmed == true else { return }
+                guard let self, let onComplete else { return }
+
+                // Two questions, and the callbacks playerNode.stop() fires need both answered. The
+                // latch, cleared before that stop(), says whether an explicit stop() ended the run;
+                // for a natural completion it is still true. Deliberately not `isPlaying`: a
+                // stopped engine would suppress a genuine completion. The run says whether this
+                // callback is the live run's — a callback delivered after the next run has armed
+                // the latch again passes it on its own.
+                guard isPlaybackArmed, currentRun == run else { return }
+
                 onComplete()
             }
         )

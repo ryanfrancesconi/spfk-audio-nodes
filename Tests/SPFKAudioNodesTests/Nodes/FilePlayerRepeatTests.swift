@@ -13,41 +13,7 @@ import Testing
 /// the range it is given is not the player's range — a run can begin inside a loop.
 @Suite(.tags(.engine), .serialized)
 final class FilePlayerRepeatTests: TestCaseModel {
-    private let sampleRate: Double = 44100
-
-    /// One second per step, each at its own amplitude, so a rendered sample says which second of
-    /// the file it came from without depending on how a format rounds a ramp.
-    private func makeStepFile(seconds: Int) throws -> URL {
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
-            throw NSError(description: "standard mono format is always constructible")
-        }
-
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(UUID().uuidString).caf")
-
-        let file = try AVAudioFile(forWriting: url, settings: format.settings)
-
-        for second in 0 ..< seconds {
-            guard let buffer = AVAudioPCMBuffer(
-                pcmFormat: format,
-                frameCapacity: AVAudioFrameCount(sampleRate)
-            ) else {
-                throw NSError(description: "could not allocate a step buffer")
-            }
-
-            buffer.frameLength = AVAudioFrameCount(sampleRate)
-
-            let value = Float(second + 1) / 10
-
-            for frame in 0 ..< Int(sampleRate) {
-                buffer.floatChannelData?[0][frame] = value
-            }
-
-            try file.write(from: buffer)
-        }
-
-        return url
-    }
+    private let sampleRate = FilePlayerTestSupport.sampleRate
 
     private struct Rig {
         let engine: AVAudioEngine
@@ -99,14 +65,9 @@ final class FilePlayerRepeatTests: TestCaseModel {
         return samples
     }
 
-    /// The step at `second`, as written by ``makeStepFile(seconds:)``.
-    private func step(_ second: Int) -> Float {
-        Float(second + 1) / 10
-    }
-
     /// With no arguments a repeat plays the range again — not the whole file.
     @Test func repeatWithNoArgumentsKeepsTheTrimmedRange() async throws {
-        let url = try makeStepFile(seconds: 4)
+        let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)
         let rig = try makeRig(url: url)
 
         // The third second only.
@@ -118,10 +79,10 @@ final class FilePlayerRepeatTests: TestCaseModel {
 
         try #require(samples.count == Int(sampleRate * 2))
 
-        #expect(samples[0] == step(2))
+        #expect(samples[0] == FilePlayerTestSupport.step(2))
 
         // The second pass, which used to begin at the top of the file.
-        #expect(samples[Int(sampleRate) + 16] == step(2), "the repeat played a range other than the one that was set")
+        #expect(samples[Int(sampleRate) + 16] == FilePlayerTestSupport.step(2), "the repeat played a range other than the one that was set")
 
         rig.engine.stop()
         try? FileManager.default.removeItem(at: url)
@@ -129,7 +90,7 @@ final class FilePlayerRepeatTests: TestCaseModel {
 
     /// A repeat is a span to play, not a redefinition of the player's range.
     @Test func repeatDoesNotRedefineThePlaybackRange() async throws {
-        let url = try makeStepFile(seconds: 4)
+        let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)
         let rig = try makeRig(url: url)
 
         try rig.player.schedule(from: 1, to: 2)
@@ -147,7 +108,7 @@ final class FilePlayerRepeatTests: TestCaseModel {
     /// A queued repeat carries no start time of its own, which is not the same as nothing being
     /// scheduled.
     @Test func repeatLeavesThePlayerScheduled() async throws {
-        let url = try makeStepFile(seconds: 4)
+        let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)
         let rig = try makeRig(url: url)
 
         try rig.player.schedule(from: 0, to: 1)
