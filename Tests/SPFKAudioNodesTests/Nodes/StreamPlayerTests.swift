@@ -512,6 +512,13 @@ final class StreamPlayerTests: TestCaseModel {
     }
 
     /// Stopping has to end the feed, not leave a task decoding into a node that will never play it.
+    ///
+    /// TODO: intermittent under parallel load — observed `readCount` 3 against an `atStop` of 2 in a
+    /// full `spfk-all-parallel` run on 2026-08-15, passing three times in a row in isolation.
+    /// `stop()` cancels the feed rather than awaiting it, so a read already inside the source can
+    /// land after `atStop` is captured. The fix belongs in `stop()` — awaiting the task, per the
+    /// rule that cancellation is only observed at a suspension point. Polling for a settled
+    /// `readCount` here would hide the thing this test exists to catch.
     @Test func stopEndsTheFeed() async throws {
         let source = RampSource(frames: 44100 * 3600)
         let rig = try await makeRig(source: source, duration: 3600)
