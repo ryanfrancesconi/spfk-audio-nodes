@@ -55,7 +55,10 @@ extension RegionFadeDescription {
             do {
                 try curve.crop(after: Float(playbackStartOffset))
             } catch {
+                // An uncropped curve here would ramp from silence at the current position.
                 Log.error(error)
+                fadeInCache = nil
+                return nil
             }
         }
 
@@ -120,7 +123,10 @@ extension RegionFadeDescription {
             do {
                 try curve.crop(after: abs(offset))
             } catch {
+                // An uncropped curve here would restart the fade-out from maximumGain.
                 Log.error(error)
+                fadeOutCache = nil
+                return nil
             }
         }
 

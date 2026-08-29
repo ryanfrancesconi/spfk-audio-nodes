@@ -301,6 +301,46 @@ struct FadeDescriptionTests {
         }
     }
 
+    // MARK: - starting mid fade-in
+
+    /// Starting inside the fade-in's final resolution step leaves `crop(after:)` with no future
+    /// events. The curve must resolve to the value the ramp had reached, never restart from
+    /// silence at the current position.
+    @Test func fadeInStartingInsideFinalStepHoldsMaximumGain() throws {
+        var desc = RegionFadeDescription()
+        desc.stepResolution = 0.2
+        desc.maximumGain = 1
+        desc.fade.inTime = 2.3273561396227387
+        desc.fade.inTaper = .default
+
+        // Last event of the uncropped curve starts at 2.2, so 2.3 is past every one of them.
+        desc.playbackStartOffset = 2.3
+
+        let events = try #require(desc.fadeInCurve()?.events)
+
+        #expect(events.count == 1)
+        #expect(events.first?.targetValue == desc.maximumGain)
+        #expect(events.allSatisfy { $0.targetValue > RegionFadeDescription.minimumGain })
+    }
+
+    /// The step below the final one still crops normally, so the fix above doesn't swallow the
+    /// mid-fade case it sits next to.
+    @Test func fadeInStartingBeforeFinalStepStillRamps() throws {
+        var desc = RegionFadeDescription()
+        desc.stepResolution = 0.2
+        desc.maximumGain = 1
+        desc.fade.inTime = 2.3273561396227387
+        desc.fade.inTaper = .default
+        desc.playbackStartOffset = 2.15
+
+        let events = try #require(desc.fadeInCurve()?.events)
+
+        #expect(events.count > 1)
+        #expect(events.last?.targetValue == desc.maximumGain)
+        // Cropped curves open with a primer at the gain already reached, not at silence.
+        #expect((events.first?.targetValue ?? 0) > 0.5)
+    }
+
     // MARK: - cache
 
     @Test func fadeCache() throws {

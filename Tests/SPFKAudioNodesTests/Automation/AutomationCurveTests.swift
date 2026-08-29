@@ -102,6 +102,25 @@ struct AutomationCurveTests {
         #expect(curve.events.last?.targetValue == RegionFadeDescription.minimumGain)
     }
 
+    // MARK: - AutomationCurve crop
+
+    /// Cropping past every event is a completed ramp, not a failure: the curve keeps the value it
+    /// finished on. Throwing here left `fadeInCurve()` returning its uncropped curve instead.
+    @Test func cropPastEveryEventKeepsTheFinalValue() throws {
+        var curve = AutomationCurve(points: [
+            ParameterAutomationPoint(targetValue: 0, startTime: -0.1, rampDuration: 0),
+            ParameterAutomationPoint(targetValue: 1, startTime: 0, rampDuration: 1),
+        ], resolution: 0.2)
+
+        let lastStart = try #require(curve.events.last?.startTime)
+
+        try curve.crop(after: lastStart + 0.05)
+
+        #expect(curve.events.count == 1)
+        #expect(curve.events.first?.targetValue == 1)
+        #expect((curve.events.first?.startTime ?? 0) < 0)
+    }
+
     // MARK: - AutomationCurve replace
 
     @Test func replaceAutomationBasic() {

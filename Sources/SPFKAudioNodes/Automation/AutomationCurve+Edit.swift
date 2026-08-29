@@ -65,20 +65,20 @@ extension AutomationCurve {
             $0.startTime >= 0
         }
 
-        guard pastEvents.isNotEmpty, futureEvents.isNotEmpty else {
+        guard let lastPast = pastEvents.last else {
             throw NSError(description: "Failed to crop events")
         }
 
-        if let firstPast = pastEvents.last {
-            // add the final negative start event in past to set initialValue
-            let immediate = AutomationEvent(
-                targetValue: firstPast.targetValue,
-                startTime: -ParameterAutomationTiming.primerRampDuration,
-                rampDuration: ParameterAutomationTiming.primerRampDuration,
-            )
+        // The value the ramp had reached at `startPoint`, so the parameter opens there rather than
+        // at whatever it was last set to. With no future events the ramp is complete and this is
+        // the whole cropped curve.
+        let immediate = AutomationEvent(
+            targetValue: lastPast.targetValue,
+            startTime: -ParameterAutomationTiming.primerRampDuration,
+            rampDuration: ParameterAutomationTiming.primerRampDuration,
+        )
 
-            futureEvents.insert(immediate, at: 0)
-        }
+        futureEvents.insert(immediate, at: 0)
 
         events = futureEvents
     }
