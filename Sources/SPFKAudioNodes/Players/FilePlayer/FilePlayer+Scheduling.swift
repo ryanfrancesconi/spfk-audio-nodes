@@ -114,16 +114,14 @@ extension FilePlayer {
             frameCount: frameCount,
             at: audioTime,
             completionCallbackType: .dataPlayedBack,
-            completionHandler: { [weak self, onComplete] _ in
-                guard let self, let onComplete else { return }
-
-                // Two questions, and the callbacks playerNode.stop() fires need both answered. The
-                // latch, cleared before that stop(), says whether an explicit stop() ended the run;
-                // for a natural completion it is still true. Deliberately not `isPlaying`: a
-                // stopped engine would suppress a genuine completion. The run says whether this
-                // callback is the live run's — a callback delivered after the next run has armed
-                // the latch again passes it on its own.
-                guard isPlaybackArmed, currentRun == run else { return }
+            // **Captures the fence, not the player.** A strong reference taken inside a completion
+            // handler — including the transient one `guard let self` creates — can be the last one,
+            // and releasing it deallocates the node from inside its own callback queue, where the
+            // dealloc's `Stop` dispatches synchronously to that same queue. The run answers what the
+            // armed latch used to: `stop()` and a superseding `schedule` both bump it before the
+            // node fires the callbacks they supersede.
+            completionHandler: { [runState, onComplete] _ in
+                guard let onComplete, runState.withLock({ $0 }) == run else { return }
 
                 onComplete()
             }

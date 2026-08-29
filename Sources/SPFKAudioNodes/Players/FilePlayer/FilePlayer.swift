@@ -129,10 +129,11 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 
     /// Identifies the run a scheduled segment belongs to.
     ///
-    /// An unfair lock rather than a bare `var` because it is read from the node's `@Sendable`
-    /// completion handlers, which arrive on arbitrary threads and cannot await. ``StreamPlayer``
-    /// fences its own callbacks the same way.
-    private let runState = OSAllocatedUnfairLock(initialState: 0)
+    /// An unfair lock rather than a bare `var` because it is *captured by* the node's `@Sendable`
+    /// completion handlers, which arrive on arbitrary threads and cannot await. Capturing this
+    /// rather than the player is what keeps a callback from ever holding the last reference to one.
+    /// ``StreamPlayer`` fences its own callbacks the same way.
+    let runState = OSAllocatedUnfairLock(initialState: 0)
 
     /// The run a completion handler must belong to for its `onComplete` to be delivered.
     var currentRun: Int { runState.withLock { $0 } }
@@ -166,6 +167,16 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// Create a player from an AVAudioFile.
     public init(audioFile: AVAudioFile) {
         self.audioFile = audioFile
+    }
+
+    /// Supersedes the run, so a handler that outlives the player cannot deliver its `onComplete`.
+    ///
+    /// The node does outlive it whenever an engine still holds it: the queued segment is destroyed
+    /// later, and destroying it calls the handler — which holds the run rather than the player.
+    /// Only that ordering. An engine released first stops the node while the player is still alive,
+    /// and that completion is delivered, as it was before the handlers stopped capturing `self`.
+    deinit {
+        beginRun()
     }
 
     // MARK: - Loading

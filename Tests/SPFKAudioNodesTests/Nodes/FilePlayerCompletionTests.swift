@@ -170,6 +170,71 @@ final class FilePlayerCompletionTests: TestCaseModel {
         #expect(repeatPass.withLock { $0 } == 1)
     }
 
+    /// Releasing the player is not a completion either.
+    ///
+    /// The handlers capture the run fence rather than the player, so `deinit` superseding the run is
+    /// the only thing left that can suppress one. The node outlives the player here — the engine
+    /// holds it — so its pending segment is destroyed, and its handler called, after the player it
+    /// belongs to is gone.
+    @Test func aReleasedPlayerReportsNothing() async throws {
+        let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)
+
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let count = OSAllocatedUnfairLock(initialState: 0)
+        let peaks = OSAllocatedUnfairLock(initialState: [Float]())
+
+        let engine = AVAudioEngine()
+
+        // Never bound to a plain `let`: an unoptimized build holds one until the end of the scope,
+        // and the release under test has to be the last reference.
+        var player: FilePlayer? = FilePlayer()
+
+        try player?.load(url: url)
+
+        guard let node = player?.playerNode, let format = player?.processingFormat else {
+            Issue.record("no player")
+            return
+        }
+
+        engine.attach(node)
+        engine.connect(node, to: engine.mainMixerNode, format: format)
+        engine.mainMixerNode.outputVolume = 0
+
+        node.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            guard let channel = buffer.floatChannelData?[0] else { return }
+
+            let peak = UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength))
+                .reduce(Float(0)) { max($0, abs($1)) }
+
+            peaks.withLock { $0.append(peak) }
+        }
+
+        try engine.start()
+
+        try player?.schedule(from: 0, to: 3) { count.withLock { $0 += 1 } }
+        try player?.play()
+
+        let heard = try await wait { peaks.withLock { $0.contains { $0 > 0.05 } } }
+        try #require(heard, "the run never produced audio")
+
+        node.removeTap(onBus: 0)
+
+        weak let weakPlayer = player
+        player = nil
+
+        try #require(weakPlayer == nil, "the player outlived the release under test")
+
+        // Mid-run, so the segment is still queued: detaching stops the node, which destroys that
+        // command and calls its handler — with the player already gone.
+        engine.stop()
+        engine.detach(node)
+
+        try await Task.sleep(for: .milliseconds(400))
+
+        #expect(count.withLock { $0 } == 0, "a completion was delivered for a released player")
+    }
+
     /// An explicit stop is still not a completion.
     @Test func anExplicitStopReportsNothing() async throws {
         let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)

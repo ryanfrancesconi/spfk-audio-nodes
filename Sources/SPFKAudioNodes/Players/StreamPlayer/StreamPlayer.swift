@@ -222,6 +222,15 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 
     public init() {}
 
+    /// Supersedes the run, so a handler that outlives the player cannot deliver its `onComplete`.
+    ///
+    /// The node does outlive it whenever an engine still holds it: the queued buffers are destroyed
+    /// later, and destroying them calls the handlers — which hold the generation rather than the
+    /// player. ``FilePlayer`` fences the same ordering, and its completion suite pins the behavior.
+    deinit {
+        feedState.withLock { _ = $0.endRun(replacingSignalWith: nil) }
+    }
+
     // MARK: - Loading
 
     /// Takes ownership of `source`.
@@ -644,8 +653,14 @@ extension StreamPlayer {
             // heard it, where consumption only means the node has read it out of the buffer.
             let onComplete = run.onComplete
 
-            playerNode.scheduleBuffer(buffer, at: at, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
-                guard let self, feedState.withLock({ $0.generation == generation }) else { return }
+            // **Captures the lock, not the player.** A completion handler runs on the node's own
+            // serial callback queue, and a strong reference taken there — including the transient
+            // one `guard let self` or `self?.` creates — can be the last one: releasing it
+            // deallocates the `AVAudioPlayerNode` from inside its own callback, and that dealloc's
+            // `Stop` dispatches synchronously to the queue it is already on. `feedState` is a
+            // `Sendable` value that fences the run on its own, so nothing here needs the player.
+            playerNode.scheduleBuffer(buffer, at: at, options: [], completionCallbackType: .dataPlayedBack) { [feedState] _ in
+                guard feedState.withLock({ $0.generation == generation }) else { return }
 
                 onComplete?()
             }
@@ -657,8 +672,8 @@ extension StreamPlayer {
 
         let signal = run.signal
 
-        playerNode.scheduleBuffer(buffer, at: at, options: [], completionCallbackType: .dataConsumed) { [weak self] _ in
-            self?.feedState.withLock { state in
+        playerNode.scheduleBuffer(buffer, at: at, options: [], completionCallbackType: .dataConsumed) { [feedState] _ in
+            feedState.withLock { state in
                 guard state.generation == generation else { return }
 
                 state.buffersInFlight = max(0, state.buffersInFlight - 1)
