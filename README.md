@@ -8,82 +8,49 @@ Audio node types, parameter automation, file playback, metronome, and offline re
 
 Extracted from [SPFKAudioWorkspace](https://github.com/ryanfrancesconi/spfk-audio-workspace) to separate reusable node-level components from engine/workspace management.
 
-## Features
+## Key types
 
-- **Stereo Fader** - Custom audio unit with independent left/right gain, stereo flip, mono mixdown, dB conversion, and parameter automation
-- **Parameter System** - `NodeParameter` wrapping `AUParameter` with safe optional access, value clamping, ramping, and automation recording
-- **Automation** - Cubic spline interpolation curves, editable automation points with gain/dB conversion, and region fade descriptions
-- **File Playback** - Single-file player with editable playback ranges, sample-accurate scheduling, and host-time or sample-time modes
-- **Stream Playback** - Buffer-queue player for containers `AVAudioFile` cannot open, fed by an external decoder with backpressure and prefill
-- **Source Abstraction** - `TransportSourcePlayer`, the surface a transport drives whether the audio came from a file or a stream
-- **Metronome** - Beat/bar/subdivision click player with configurable sound sets and mute support
-- **Offline Rendering** - Actor-based `EngineRenderer` for bouncing audio engine graphs to files in manual rendering mode
-- **Track Model** - `AudioTrack` with mixer, audio unit chain, and connect/detach lifecycle
-- **Mixer** - `MixerWrapper` around `AVAudioMixerNode` with volume and pan control
+| Type | Description |
+|------|-------------|
+| **`Fader`** | A stereo fader audio unit: independent left/right gain, stereo flip, mono mixdown, dB conversion, parameter automation |
+| **`NodeParameter`** / **`Parameter`** / **`NodeParameterDef`** | An `AUParameter` wrapped with safe optional access, clamping, ramping and automation recording |
+| **`NodeParameterType`** | What a parameter is, for a node declaring its own |
+| **`AutomationCurve`** / **`AutomationPoint`** | Curved automation over any time-varying parameter, converted to the linear ramps DSP consumes |
+| **`ParameterAutomationTiming`** | When an automation run is anchored |
+| **`RegionFadeDescription`** | Fade in and out curves over a region of a timeline |
+| **`FilePlayer`** | Single-file playback with editable ranges and sample-accurate scheduling |
+| **`StreamPlayer`** / **`StreamPlayerEvent`** | Buffer-queue playback for containers `AVAudioFile` cannot open |
+| **`TransportSourcePlayer`** | The surface a transport drives, whether the audio came from a file or a stream |
+| **`Metronome`** / **`MetronomeClick`** / **`MetronomeSoundSet`** | Beat, bar and subdivision clicks with configurable sound sets |
+| **`AudioTrack`** / **`AudioTrackDelegate`** | A mixer input, a fader output and an effects chain, with a connect/detach lifecycle |
+| **`MixerWrapper`** / **`Mixable`** | `AVAudioMixerNode` with volume and pan |
+| **`EngineRenderer`** / **`EngineRendererOptions`** | Actor-based offline bounce of an engine graph in manual rendering mode |
+| **`AudioEngineNodeAU`** / **`SPFKAudioUnit`** | The node-level audio unit surface everything above is built on |
+| **`TransportValidationAU`** / **`TransportSnapshot`** | A test unit that captures the host transport and musical context it is handed on each render cycle |
 
-## Usage
+## Playing from a stream
 
-### Fader
+`StreamPlayer` takes any `SeekablePCMSource` and keeps the node's queue fed from it, so the decoder
+lives in whichever package owns the container rather than here — Matroska, chiefly.
 
-```swift
-import SPFKAudioNodes
+Scheduling is `async` on `StreamPlayer` and synchronous on `FilePlayer`: a file is armed by handing
+the node a segment, whereas a stream has to decode before there is anything to hand over. Starting
+the node before that has happened plays an empty queue.
 
-let fader = try await Fader(gain: 0.8)
-fader.dB = -6              // set gain in dB
-fader.leftGain = 0.5       // independent channel control
-fader.flipStereo = true    // swap L/R
-```
+`TransportSourcePlayer` is the seam between the two, and is deliberately narrow — it is the surface
+`TransportPlayer` already used against `FilePlayer`, not a general player abstraction, since
+anything wider would have to be honored twice. Both conformers drive an `AVAudioPlayerNode`, so
+everything below the seam — the sample-accurate start, the playhead, the completion callbacks — is
+one piece of machinery rather than two implementations of it.
 
-### File Playback
-
-```swift
-let player = try FilePlayer()
-try player.load(url: audioFileURL)
-try player.schedule(from: 1.0, to: 3.0)  // play seconds 1-3
-try player.play()
-```
-
-### Stream Playback
-
-For a container `AVAudioFile` cannot open — Matroska, chiefly. `StreamPlayer` takes any
-`SeekablePCMSource` and keeps the node's queue fed from it, so the decoder lives in whichever
-package owns the container rather than here.
-
-```swift
-let player = StreamPlayer()
-try player.load(source: decoder, url: url, duration: duration)
-
-try await player.schedule(from: 1.0, to: 3.0, when: 0, hostTime: nil, onComplete: nil)
-try player.play()
-```
-
-`schedule` is `async` here and synchronous on `FilePlayer`: a file is armed by handing the node a
-segment, whereas a stream has to decode before there is anything to hand over. Starting the node
-before that has happened plays an empty queue.
-
-### Looping either source
+## Looping either source
 
 `enqueueRepeat` queues a pass after whatever is already scheduled. `AVAudioPlayerNode` plays a
 command with no time immediately after the last one, so neither player times anything against a
 clock — which is also why this works in manual rendering mode, where host time is ignored.
 
-```swift
-try player.enqueueRepeat(from: loopStart, to: loopEnd, onComplete: nil)
-```
-
 The range is stated rather than reused from the current run, because playback can begin inside a
 loop and that first partial pass is not what repeats.
-
-### Offline Rendering
-
-```swift
-let renderer = EngineRenderer(engineManager: engineManager)
-try await renderer.write(
-    to: outputURL,
-    duration: duration,
-    options: EngineRendererOptions(sampleRate: 44100, bitDepth: 24)
-)
-```
 
 ## Dependencies
 
