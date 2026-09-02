@@ -120,17 +120,17 @@ extension AutomationCurve {
 }
 
 extension AutomationCurve {
+    /// The point's taper and skew describe an ``AudioTaper``, evaluated across `start` to the
+    /// point's target value. Blending the two power curves and then interpolating is equivalent
+    /// to interpolating the blend, so the ramp matches an audited fade of the same taper.
     static func evalRamp(start: Float, point: ParameterAutomationPoint, time: Float, endTime: Float) -> Float {
         let remain = endTime - time
-        let taper = point.rampTaper
-        let goal = point.targetValue
 
         // x is normalized position in ramp segment
         let x = (point.rampDuration - remain) / point.rampDuration
-        let taper1 = start + (goal - start) * pow(x, abs(taper))
-        let taper2 = start + (goal - start) * (1.0 - pow(1.0 - x, 1.0 / abs(taper)))
+        let taper = AudioTaper(value: abs(point.rampTaper), skew: point.rampSkew)
 
-        return taper1 * (1.0 - point.rampSkew) + taper2 * point.rampSkew
+        return start + (point.targetValue - start) * Float(taper.gain(at: Double(x)))
     }
 
     /// Convert our automation points to curve events

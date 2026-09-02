@@ -76,7 +76,7 @@ struct FadeDescriptionTests {
 
         let expectedResult = [
             AutomationEvent(targetValue: 0.0, startTime: -0.1, rampDuration: 0.0),
-            AutomationEvent(targetValue: 0.029227404, startTime: 0.0, rampDuration: 0.2),
+            AutomationEvent(targetValue: 0.02922741, startTime: 0.0, rampDuration: 0.2),
             AutomationEvent(targetValue: 0.09485577, startTime: 0.2, rampDuration: 0.2),
             AutomationEvent(targetValue: 0.23173125, startTime: 0.4, rampDuration: 0.2),
             AutomationEvent(targetValue: 0.47973216, startTime: 0.6, rampDuration: 0.2),
