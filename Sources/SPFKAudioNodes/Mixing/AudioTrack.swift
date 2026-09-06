@@ -31,7 +31,7 @@ public final class AudioTrack {
     /// Set by the workspace coordinator after creation.
     public var hostAUState: HostAUState?
 
-    public let delegate: AudioTrackDelegate?
+    public weak var delegate: AudioTrackDelegate?
 
     public init(delegate: AudioTrackDelegate?) async throws {
         self.delegate = delegate
