@@ -39,9 +39,7 @@ public final class AudioTrack {
         mixer = MixerWrapper()
         fader = try await Fader()
 
-        nonisolated(unsafe) let inputNode = mixer.avAudioNode
-        nonisolated(unsafe) let outputNode = fader.avAudioNode
-        try await audioUnitChain.updateIO(input: inputNode, output: outputNode)
+        try await audioUnitChain.updateIO(input: mixer.avAudioNode, output: fader.avAudioNode)
     }
 
     deinit {
@@ -51,11 +49,9 @@ public final class AudioTrack {
 
 extension AudioTrack: @preconcurrency AudioUnitChainDelegate {
     public func connectAndAttach(_ node1: AVAudioNode, to node2: AVAudioNode, format: AVAudioFormat?) async throws {
-        nonisolated(unsafe) let n1 = node1
-        nonisolated(unsafe) let n2 = node2
-        try await delegate?.connectAndAttach(n1, to: n2, format: format)
+        try await delegate?.connectAndAttach(node1, to: node2, format: format)
 
-        Log.debug("Connected", n1, "to", n2, "with format", format?.readableDescription)
+        Log.debug("Connected", node1, "to", node2, "with format", format?.readableDescription)
     }
 
     public func audioUnitChain(_ audioUnitChain: AudioUnitChain, event: AudioUnitChainEvent) async {
