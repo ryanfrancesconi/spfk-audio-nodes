@@ -138,8 +138,6 @@ open class SPFKAudioUnit: AUAudioUnit {
     private func createBusses(format: AVAudioFormat?) throws {
         let format = format ?? AudioDefaults.shared.unsafeSystemFormat
 
-        // Log.debug(format)
-
         inputBusArray.removeAll()
         outputBusArray.removeAll()
 
