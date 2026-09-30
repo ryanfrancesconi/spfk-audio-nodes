@@ -58,10 +58,6 @@ public actor EngineRenderer {
     public init(engine: AVAudioEngine) {
         self.engine = engine
     }
-
-    deinit {
-        Log.debug("- { \(self) }")
-    }
 }
 
 extension EngineRenderer {
@@ -215,8 +211,6 @@ extension EngineRenderer {
         // This resets the sampleTime of offline rendering to 0.
         engine.reset()
 
-        Log.debug("Starting engine...")
-
         try engine.start()
 
         try write()
@@ -274,7 +268,6 @@ extension EngineRenderer {
         // MARK: - Stop
 
         if let postrender {
-            Log.debug("* Triggering postrender action")
             try postrender()
         }
 
@@ -316,8 +309,6 @@ extension EngineRenderer {
     /// Continues rendering after the main pass to capture reverb/effect decay.
     /// Stops when silence is detected or ``EngineRendererOptions/maxTailToRender`` is reached.
     private func writeTail() throws {
-        Log.debug("Entering audio tail loop...")
-
         let framesToRender: AVAudioFrameCount = maxFramePerSlice
 
         guard

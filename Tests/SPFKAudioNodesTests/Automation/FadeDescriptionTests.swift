@@ -35,8 +35,6 @@ struct FadeDescriptionTests {
         let firstPoint = try #require(events.first)
         let lastPoint = try #require(events.last)
 
-        Log.debug(firstPoint, lastPoint)
-
         #expect(events.count == 23)
         #expect(firstPoint == AutomationEvent(targetValue: 0.0, startTime: -0.1, rampDuration: 0.0))
         #expect(lastPoint == AutomationEvent(targetValue: 1.0, startTime: 4.2000003, rampDuration: 0.105576515))
@@ -51,8 +49,6 @@ struct FadeDescriptionTests {
         let events = try #require(curve?.events)
 
         #expect(events.count == 2)
-
-        Log.debug(events)
 
         let expectedResult = [
             AutomationEvent(targetValue: 0.0, startTime: -0.1, rampDuration: 0.0),
@@ -71,8 +67,6 @@ struct FadeDescriptionTests {
 
         let curve = desc.fadeInCurve()
         let events = try #require(curve?.events)
-
-        Log.debug(events)
 
         let expectedResult = [
             AutomationEvent(targetValue: 0.0, startTime: -0.1, rampDuration: 0.0),
@@ -95,8 +89,6 @@ struct FadeDescriptionTests {
 
         let curve = desc.fadeInCurve()
         let events = try #require(curve?.events)
-
-        Log.debug(events)
 
         let expectedResult = [
             AutomationEvent(targetValue: 0.0, startTime: -0.1, rampDuration: 0.0),

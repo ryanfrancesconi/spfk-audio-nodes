@@ -41,17 +41,11 @@ public final class AudioTrack {
 
         try await audioUnitChain.updateIO(input: mixer.avAudioNode, output: fader.avAudioNode)
     }
-
-    deinit {
-        Log.debug("- { \(self) }")
-    }
 }
 
 extension AudioTrack: @preconcurrency AudioUnitChainDelegate {
     public func connectAndAttach(_ node1: AVAudioNode, to node2: AVAudioNode, format: AVAudioFormat?) async throws {
         try await delegate?.connectAndAttach(node1, to: node2, format: format)
-
-        Log.debug("Connected", node1, "to", node2, "with format", format?.readableDescription)
     }
 
     public func audioUnitChain(_ audioUnitChain: AudioUnitChain, event: AudioUnitChainEvent) async {
