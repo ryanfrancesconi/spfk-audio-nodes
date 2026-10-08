@@ -113,8 +113,8 @@ public final class Metronome: @unchecked Sendable {
         // Swift is safe here because nothing in the block allocates on the heap:
         // - The [Float] sample arrays are captured at init and never mutated,
         //   so element access is a direct pointer dereference (no COW copy).
-        // - OSAllocatedUnfairLock is a non-blocking spinlock that never enters
-        //   the kernel — the one lock type acceptable on the audio thread.
+        // - OSAllocatedUnfairLock blocks with priority donation under contention,
+        //   so the critical section must stay a short, allocation-free snapshot.
         // - All arithmetic uses stack-local scalars and UnsafePointer math.
         // - memset/memcpy are C functions with no Swift runtime overhead.
         // No swift_allocObject, no objc_msgSend, no autorelease pools.
