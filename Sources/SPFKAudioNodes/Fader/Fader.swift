@@ -41,6 +41,18 @@ public class Fader: AudioEngineNodeAU, TypeDescribable {
     /// Make the output on left and right both be the same combination of incoming left and mixed equally
     @Parameter(FaderParameter.mixToMono.parameterDef) public var mixToMono: Bool
 
+    /// Which signal `mixToMono` keeps: 0 average, 1 left, 2 right
+    @Parameter(FaderParameter.monoSource.parameterDef) public var monoSource: AUValue
+
+    /// Decode a mid/side input to left/right at `midSideWidth`
+    @Parameter(FaderParameter.midSideDecode.parameterDef) public var midSideDecode: Bool
+
+    /// Side gain of the mid/side decode, 0 ... 2
+    @Parameter(FaderParameter.midSideWidth.parameterDef) public var midSideWidth: AUValue
+
+    /// Encode a left/right input to mid/side
+    @Parameter(FaderParameter.midSideEncode.parameterDef) public var midSideEncode: Bool
+
     /// Amplification Factor, from 0 ... x
     open var gain: AUValue = 1 {
         didSet {
@@ -91,8 +103,7 @@ public class Fader: AudioEngineNodeAU, TypeDescribable {
 
         leftGain = gain
         rightGain = gain
-        flipStereo = false
-        mixToMono = false
+        channelOperation = .none
     }
 
     deinit {

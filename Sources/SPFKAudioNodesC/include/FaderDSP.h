@@ -16,7 +16,11 @@ typedef NS_ENUM(AUParameterAddress, FaderParameter) {
     FaderParameterLeftGain,
     FaderParameterRightGain,
     FaderParameterFlipStereo,
-    FaderParameterMixToMono
+    FaderParameterMixToMono,
+    FaderParameterMonoSource,
+    FaderParameterMidSideDecode,
+    FaderParameterMidSideWidth,
+    FaderParameterMidSideEncode
 };
 
 #endif // !FaderDSP_h

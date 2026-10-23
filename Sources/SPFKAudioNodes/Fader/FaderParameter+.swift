@@ -19,6 +19,10 @@ extension FaderParameter {
         case .rightGain:    "rightGain"
         case .flipStereo:   "flipStereo"
         case .mixToMono:    "mixToMono"
+        case .monoSource:   "monoSource"
+        case .midSideDecode: "midSideDecode"
+        case .midSideWidth: "midSideWidth"
+        case .midSideEncode: "midSideEncode"
         @unknown default:   ""
         }
     }
@@ -29,6 +33,10 @@ extension FaderParameter {
         case .rightGain:    "FaderParameterRightGain"
         case .flipStereo:   "FaderParameterFlipStereo"
         case .mixToMono:    "FaderParameterMixToMono"
+        case .monoSource:   "FaderParameterMonoSource"
+        case .midSideDecode: "FaderParameterMidSideDecode"
+        case .midSideWidth: "FaderParameterMidSideWidth"
+        case .midSideEncode: "FaderParameterMidSideEncode"
         @unknown default:   ""
         }
     }
@@ -39,6 +47,10 @@ extension FaderParameter {
         case .rightGain:    "Right Gain"
         case .flipStereo:   "Flip Stereo"
         case .mixToMono:    "Mix To Mono"
+        case .monoSource:   "Mono Source"
+        case .midSideDecode: "M/S Decode"
+        case .midSideWidth: "M/S Width"
+        case .midSideEncode: "M/S Encode"
         @unknown default:   ""
         }
     }
@@ -48,7 +60,11 @@ extension FaderParameter {
         case .leftGain,
              .rightGain:    Self.defaultGainRange
         case .flipStereo,
-             .mixToMono:    AUValue.unitIntervalRange
+             .mixToMono,
+             .midSideDecode,
+             .midSideEncode: AUValue.unitIntervalRange
+        case .monoSource:   0 ... 2
+        case .midSideWidth: 0 ... 2
         @unknown default:   AUValue.unitIntervalRange
         }
     }
@@ -59,7 +75,13 @@ extension FaderParameter {
              .rightGain:    .linearGain
 
         case .flipStereo,
-             .mixToMono:    .boolean
+             .mixToMono,
+             .midSideDecode,
+             .midSideEncode: .boolean
+
+        case .monoSource:   .indexed
+
+        case .midSideWidth: .generic
 
         @unknown default:   .linearGain
         }
@@ -70,7 +92,11 @@ extension FaderParameter {
         case .leftGain,
              .rightGain:    1
         case .flipStereo,
-             .mixToMono:    0
+             .mixToMono,
+             .monoSource,
+             .midSideDecode,
+             .midSideEncode: 0
+        case .midSideWidth: 1
         @unknown default:   0
         }
     }
