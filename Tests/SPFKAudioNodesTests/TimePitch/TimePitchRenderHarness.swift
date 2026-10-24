@@ -67,6 +67,20 @@ final class TimePitchRig {
         return result
     }
 
+    /// The node's latency at `rate` in frames; 0 bypassed.
+    func latencyFrames(atRate rate: Double) -> AVAudioFramePosition {
+        timePitch.isBypassed ? 0 : AVAudioFramePosition((timePitch.latency(atRate: rate) * format.sampleRate).rounded())
+    }
+
+    /// Starts the player so that its frame 0 is heard at output `sampleTime`: the node is held until
+    /// its latency before then, and the player started on the upstream time the hold returns.
+    @discardableResult
+    func startHeld(heardAt sampleTime: AVAudioFramePosition, rate: Double) throws -> AVAudioFramePosition {
+        let upstream = try #require(timePitch.holdStart(untilSampleTime: sampleTime - latencyFrames(atRate: rate)))
+        player.play(at: AVAudioTime(sampleTime: upstream, atRate: format.sampleRate))
+        return upstream
+    }
+
     /// Renders `frames` from a fresh play of `input`.
     func play(_ input: AVAudioPCMBuffer, frames: Int) throws -> [[Float]] {
         player.scheduleBuffer(input, completionHandler: nil)
@@ -159,6 +173,22 @@ func bestAlignment(_ measured: [Float], _ reference: [Float], range: Range<Int>,
         if correlation > best.correlation { best = (lag, correlation) }
     }
     return best
+}
+
+/// The correlation of two signals' RMS envelopes in 10 ms windows at 48 kHz, about their means: how
+/// alike they are in level over time, whatever their phase.
+func envelopeCorrelation(_ a: [Float], _ b: [Float]) -> Double {
+    let window = 480
+    func envelope(_ x: [Float]) -> [Double] {
+        stride(from: 0, to: x.count - window, by: window).map { rmsDB(x[$0 ..< $0 + window]) }
+    }
+    let ea = envelope(a), eb = envelope(b)
+    let ma = ea.reduce(0, +) / Double(ea.count), mb = eb.reduce(0, +) / Double(eb.count)
+    var dot = 0.0, aa = 0.0, bb = 0.0
+    for (x, y) in zip(ea, eb) {
+        dot += (x - ma) * (y - mb); aa += (x - ma) * (x - ma); bb += (y - mb) * (y - mb)
+    }
+    return dot / (aa * bb).squareRoot()
 }
 
 func rmsDB(_ samples: ArraySlice<Float>) -> Double {

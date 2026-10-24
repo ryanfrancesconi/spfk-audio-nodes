@@ -6,6 +6,7 @@
 #include "DSPBase.hpp"
 #include "SPFKTimePitchKernel.h"
 #include "TimePitchDSP.h"
+#include <optional>
 
 /// Signalsmith Stretch as an insert: pulls `rate` × the frames it renders.
 ///
@@ -26,19 +27,22 @@ struct TimePitchDSP : DSPBase {
 
     std::atomic<int64_t> inputFramesPulled{0};
 
-    enum HoldKind : int { HoldNone, HoldSample, HoldHost };
-    std::atomic<int> holdKind{HoldNone};
+    enum HoldKind : int { HoldSample, HoldHost };
+    /// A seqlock: odd while a hold is written, and a hold is pending while it differs from `releasedHold`.
+    std::atomic<uint64_t> holdSequence{0};
+    std::atomic<int> holdKind{HoldSample};
     std::atomic<double> holdSampleTime{0};
     std::atomic<uint64_t> holdHostTime{0};
-    std::atomic<double> holdUpstreamTime{0};
-    /// The input counter as of the last block, for a hold to reserve a start ahead of.
+    /// The upstream and output sample times at the end of the last block.
     std::atomic<double> publishedInputTime{0};
-    /// The host time of the last block's first pull, and the counter it carried.
-    std::atomic<uint64_t> lastPullHostTime{0};
-    std::atomic<double> lastPullSampleTime{0};
-
-    double reserveUpstreamTime(double atLeast);
+    std::atomic<double> publishedOutputTime{0};
     double hostTicksPerSecond = 0;
+
+    void hold(HoldKind kind, double sampleTime, uint64_t hostTime);
+
+    /// The frames of this block before a pending start, or none without one; the start is
+    /// released when it falls inside the block.
+    std::optional<AUAudioFrameCount> framesHeld(const AudioTimeStamp *timestamp, AUAudioFrameCount frameCount);
 
     AUAudioFrameCount maximumFrames = 0;
     AUAudioFrameCount inputCapacity = 0;
@@ -51,6 +55,7 @@ struct TimePitchDSP : DSPBase {
     uint32_t appliedGeneration = 0;
     bool wasBypassed = false;
     bool hasInputTime = false;
+    uint64_t releasedHold = 0;
     Float64 inputSampleTime = 0;
 
     TimePitchKernelRef makeKernel(TimePitchDSPQuality kernelQuality);
@@ -66,8 +71,8 @@ struct TimePitchDSP : DSPBase {
     ~TimePitchDSP() override;
 
     void setQuality(TimePitchDSPQuality newQuality);
-    double holdUntilSampleTime(double sampleTime);
-    double holdUntilHostTime(uint64_t hostTime);
+    double holdStartUntilSampleTime(double sampleTime);
+    void holdStartUntilHostTime(uint64_t hostTime);
     double latencyAtRate(double rate);
     int64_t framesPulled() const { return inputFramesPulled.load(std::memory_order_relaxed); }
 

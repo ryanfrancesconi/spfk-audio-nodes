@@ -68,67 +68,37 @@ final class TimePitchPullTests: TestCaseModel {
         #expect(landing.weakest > 0.05)
     }
 
-    // MARK: - Starts as the transport makes them
+    // MARK: - Held starts
 
-    /// The transport schedules the run at player sample 0 and starts the player at the engine's
-    /// sample time (offline) after the node has already been running. Source s must be heard at
-    /// P + L + s / rate, and a pass queued behind it at P + L + (D + s) / rate.
-    @Test(arguments: [0.5, 2] as [Double])
-    func transportStartAndLoopLandAtTheRate(rate: Double) async throws {
+    /// The transport's start: the node holds until its latency before H, and the player starts on
+    /// the upstream time the hold returns. Source p is heard at H + p / r, and a pass queued behind
+    /// the first at H + (D + p) / r.
+    @Test(arguments: [(0.5, false), (1, false), (2, false), (1, true), (0.5, true)] as [(Double, Bool)])
+    func heldStartAndLoopLandAtTheirTime(rate: Double, bypassed: Bool) async throws {
         let passFrames = Int(sampleRate)
         let input = try TimePitchRig.makeClicks(frames: passFrames, every: clickSpacing, first: clickSpacing / 2)
-        let rig = try await TimePitchRig { $0.rate = AUValue(rate) }
+        let rig = try await TimePitchRig {
+            $0.rate = AUValue(rate)
+            $0.isBypassed = bypassed
+        }
+        let heardRate = bypassed ? 1 : rate
 
         // The node runs, pulling at the rate, before anything plays.
         _ = try rig.render(frames: 20 * 512)
-        let start = rig.engine.manualRenderingSampleTime
+        let renderStart = Int(rig.engine.manualRenderingSampleTime)
+        let heard = rig.latencyFrames(atRate: rate) + 1000 // the release mid-block
 
         rig.player.scheduleBuffer(input, at: AVAudioTime(sampleTime: 0, atRate: sampleRate), completionHandler: nil)
         rig.player.scheduleBuffer(input, at: nil, completionHandler: nil)
-        rig.player.play(at: AVAudioTime(sampleTime: start, atRate: sampleRate))
+        try rig.startHeld(heardAt: AVAudioFramePosition(renderStart) + heard, rate: rate)
 
-        let latency = rig.timePitch.latency(atRate: rate) * sampleRate
-        let output = try rig.render(frames: Int(Double(2 * passFrames) / rate + latency) + 2400)
-
-        let firstPass = Array(stride(from: clickSpacing / 2, to: passFrames, by: clickSpacing))
-        let bothPasses = firstPass + firstPass.map { $0 + passFrames }
-        let landing = landings(in: output[0], clicks: bothPasses) { Double($0) / rate + latency }
-
-        reportTimePitch("transport start \(rate)x", "start sample \(start), \(landing.description)")
-        reportTimePitch("transport start \(rate)x first click", "found \(firstClick(in: output[0]) ?? -1), predicted \(Double(clickSpacing / 2) / rate + latency)")
-        // The player keeps time by the node's input-sample counter, which runs at the rate, so a
-        // sample-time start lands off by however far the counters have diverged.
-        withKnownIssue("A sample-time start through an engaged node lands off its time") {
-            #expect(landing.deviations.count == bothPasses.count)
-            #expect(landing.worst <= 2)
-        }
-    }
-
-    /// The node owns the start: it holds until an output sample, and the player is started at the
-    /// upstream sample time the node's first pull will carry.
-    @Test(arguments: [0.5, 2] as [Double])
-    func heldStartAndLoopLandAtTheRate(rate: Double) async throws {
-        let passFrames = Int(sampleRate)
-        let input = try TimePitchRig.makeClicks(frames: passFrames, every: clickSpacing, first: clickSpacing / 2)
-        let rig = try await TimePitchRig { $0.rate = AUValue(rate) }
-
-        _ = try rig.render(frames: 20 * 512)
-        let renderStart = rig.engine.manualRenderingSampleTime
-        let start = renderStart + 1000 // mid-block
-
-        let upstream = try #require(rig.timePitch.holdUntil(sampleTime: start))
-        rig.player.scheduleBuffer(input, at: AVAudioTime(sampleTime: 0, atRate: sampleRate), completionHandler: nil)
-        rig.player.scheduleBuffer(input, at: nil, completionHandler: nil)
-        rig.player.play(at: AVAudioTime(sampleTime: upstream, atRate: sampleRate))
-
-        let latency = rig.timePitch.latency(atRate: rate) * sampleRate
-        let output = try rig.render(frames: Int(Double(2 * passFrames) / rate + latency) + 4000)
+        let output = try rig.render(frames: Int(heard) + Int(Double(2 * passFrames) / heardRate) + 2400)
 
         let firstPass = Array(stride(from: clickSpacing / 2, to: passFrames, by: clickSpacing))
         let bothPasses = firstPass + firstPass.map { $0 + passFrames }
-        let landing = landings(in: output[0], clicks: bothPasses) { 1000 + Double($0) / rate + latency }
+        let landing = landings(in: output[0], clicks: bothPasses) { Double(heard) + Double($0) / heardRate }
 
-        reportTimePitch("held start \(rate)x", "start sample \(start), \(landing.description), first click \(firstClick(in: output[0]) ?? -1)")
+        reportTimePitch("held start \(rate)x bypassed \(bypassed)", "\(landing.description), first click \(firstClick(in: output[0]) ?? -1)")
         #expect(landing.deviations.count == bothPasses.count)
         #expect(landing.worst <= 2)
     }

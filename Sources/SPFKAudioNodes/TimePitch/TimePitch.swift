@@ -107,18 +107,20 @@ public class TimePitch: AudioEngineNodeAU, TypeDescribable {
         return latencyAtRateTimePitchDSP(dsp, rate)
     }
 
-    /// Renders silence and pulls nothing until `sampleTime`, an output sample time, then pulls
-    /// the upstream. Returns where the upstream player must be started: its first pull carries
-    /// that sample time.
-    public func holdUntil(sampleTime: AVAudioFramePosition) -> AVAudioFramePosition? {
+    /// Starts the node at `sampleTime`, an output sample time: silence until then, and from then
+    /// the stretcher from a reset. Returns the upstream sample time of that frame, at which a
+    /// player feeding the node is started. For offline rendering, between renders; a time already
+    /// past starts at the next block.
+    public func holdStart(untilSampleTime sampleTime: AVAudioFramePosition) -> AVAudioFramePosition? {
         guard let dsp else { return nil }
-        return AVAudioFramePosition(holdUntilSampleTimeTimePitchDSP(dsp, Double(sampleTime)))
+        return AVAudioFramePosition(holdStartUntilSampleTimeTimePitchDSP(dsp, Double(sampleTime)))
     }
 
-    /// As ``holdUntil(sampleTime:)``, at a host time.
-    public func holdUntil(hostTime: UInt64) -> AVAudioFramePosition? {
-        guard let dsp else { return nil }
-        return AVAudioFramePosition(holdUntilHostTimeTimePitchDSP(dsp, hostTime))
+    /// As ``holdStart(untilSampleTime:)``, at a host time. A player feeding the node is started at
+    /// the same host time, after this call.
+    public func holdStart(untilHostTime hostTime: UInt64) {
+        guard let dsp else { return }
+        holdStartUntilHostTimeTimePitchDSP(dsp, hostTime)
     }
 
     /// Every input frame pulled since render resources were allocated.

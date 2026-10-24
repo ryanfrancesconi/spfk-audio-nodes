@@ -40,24 +40,8 @@ final class TimePitchPreviewTests: TestCaseModel {
             correlation: best.correlation,
             residualDB: residualDB(measured, reference, range: range, lag: best.lag),
             levelDifferenceDB: rmsDB(aligned) - rmsDB(reference[range]),
-            envelopeCorrelation: Self.envelopeCorrelation(Array(aligned), Array(reference[range]))
+            envelopeCorrelation: envelopeCorrelation(Array(aligned), Array(reference[range]))
         )
-    }
-
-    /// The correlation of two signals' RMS envelopes in 10 ms windows, about their means: how alike
-    /// they are in level over time, whatever their phase.
-    private static func envelopeCorrelation(_ a: [Float], _ b: [Float]) -> Double {
-        let window = 480
-        func envelope(_ x: [Float]) -> [Double] {
-            stride(from: 0, to: x.count - window, by: window).map { rmsDB(x[$0 ..< $0 + window]) }
-        }
-        let ea = envelope(a), eb = envelope(b)
-        let ma = ea.reduce(0, +) / Double(ea.count), mb = eb.reduce(0, +) / Double(eb.count)
-        var dot = 0.0, aa = 0.0, bb = 0.0
-        for (x, y) in zip(ea, eb) {
-            dot += (x - ma) * (y - mb); aa += (x - ma) * (x - ma); bb += (y - mb) * (y - mb)
-        }
-        return dot / (aa * bb).squareRoot()
     }
 
     /// The node's output for `input`, with the frames of latency it starts with.

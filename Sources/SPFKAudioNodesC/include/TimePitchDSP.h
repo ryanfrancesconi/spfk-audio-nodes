@@ -38,13 +38,16 @@ double latencyAtRateTimePitchDSP(DSPRef pDSP, double rate);
 /// Every input frame pulled since render resources were allocated, bypassed or not.
 int64_t inputFramesPulledTimePitchDSP(DSPRef pDSP);
 
-/// Renders silence and pulls nothing until `sampleTime`, an output sample time, then pulls the
-/// upstream with the kernel reset. Returns the upstream sample time of that first pull, which
-/// is where a player feeding the node must be started.
-double holdUntilSampleTimeTimePitchDSP(DSPRef pDSP, double sampleTime);
+/// Holds the node's start until `sampleTime`, an output sample time. Until then it renders silence
+/// and pulls its upstream 1:1, discarding it, so the upstream's timeline never jumps; from then it
+/// renders from a reset. Returns the upstream sample time of the start frame, where a player
+/// feeding the node is started. Exact only while nothing renders concurrently, as offline. A time
+/// already past starts at the next block.
+double holdStartUntilSampleTimeTimePitchDSP(DSPRef pDSP, double sampleTime);
 
-/// As `holdUntilSampleTimeTimePitchDSP`, at a host time, resolved against each block's timestamp.
-double holdUntilHostTimeTimePitchDSP(DSPRef pDSP, uint64_t hostTime);
+/// As `holdStartUntilSampleTimeTimePitchDSP`, at a host time. A player feeding the node is started
+/// at the same host time, after this call.
+void holdStartUntilHostTimeTimePitchDSP(DSPRef pDSP, uint64_t hostTime);
 
 CF_EXTERN_C_END
 
