@@ -83,12 +83,11 @@ final class FadeRenderAccuracyTests: TestCaseModel {
     }
 
     /// Measured 2026-10-24 against `spfk-audio-nodes` 4523986. Every curved preset, at every
-    /// length; the linear preset only where one frame of the render's `(i + 1) / n` convention
-    /// exceeds the tolerance.
+    /// length. The linear preset matches now that the render evaluates frame i at i / n.
     static let knownSamplingFailures: Set<String> = Set(
         [0, 2].flatMap { taper in
             ["0.1", "0.5", "2.0", "10.0"].flatMap { seconds in Direction.allCases.map { "\(taper)-\(seconds)-\($0.rawValue)" } }
-        } + ["1-0.1-fadeIn", "1-0.1-fadeOut"]
+        }
     )
 
     // MARK: - Starting mid-fade (fact 3)
