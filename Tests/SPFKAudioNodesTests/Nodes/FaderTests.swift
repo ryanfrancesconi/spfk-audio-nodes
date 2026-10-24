@@ -125,4 +125,16 @@ final class FaderTests: TestCaseModel {
 
         fader = nil
     }
+
+    @Test func parameterUnitsMatchTheirDefinitions() async throws {
+        let fader = try await Fader()
+
+        for param in fader.parameters {
+            #expect(param.parameter?.unit == param.def.unit, "\(param.def.identifier)")
+        }
+
+        #expect(fader.$leftGain.parameter?.unit == .linearGain)
+        #expect(fader.$rightGain.parameter?.unit == .linearGain)
+        #expect(fader.$monoSource.parameter?.unit == .indexed)
+    }
 }

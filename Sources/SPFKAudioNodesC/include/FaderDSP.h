@@ -12,7 +12,7 @@
 
 static const NSString *kAudioUnitFaderSubTypeString = @"fder";
 
-typedef NS_ENUM(AUParameterAddress, FaderParameter) {
+typedef NS_CLOSED_ENUM(AUParameterAddress, FaderParameter) {
     FaderParameterLeftGain,
     FaderParameterRightGain,
     FaderParameterFlipStereo,

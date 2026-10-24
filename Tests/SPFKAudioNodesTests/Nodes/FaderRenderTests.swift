@@ -108,6 +108,22 @@ final class FaderRenderTests: TestCaseModel {
         #expect(output == channels(input))
     }
 
+    @Test func setWhileRunningReachesTheDSP() async throws {
+        var readBack: AUValue?
+
+        let output = try await render(makeDC(frames: 4096), started: { fader in
+            fader.leftGain = 0.25
+            if let dsp = (fader.avAudioNode.auAudioUnit as? SPFKAudioUnit)?.dsp {
+                readBack = getParameterValueDSP(dsp, FaderParameter.leftGain.rawValue)
+            }
+        })
+
+        #expect(readBack == 0.25)
+        // Dezippered over 20 ms: 960 frames at 48 kHz.
+        #expect(output[0][1024...].allSatisfy { $0 == 0.25 })
+        #expect(output[1].allSatisfy { $0 == 1 })
+    }
+
     /// Pins the render to the channel buffer step times each side's gain.
     @Test(arguments: [
         ChannelOperation.none, .swap, .mono(.average), .mono(.left), .mono(.right),

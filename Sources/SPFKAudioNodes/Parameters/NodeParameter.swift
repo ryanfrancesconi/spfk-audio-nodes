@@ -18,17 +18,7 @@ public class NodeParameter {
     public var value: AUValue {
         get { parameter?.value ?? def.defaultValue }
         set {
-            guard let parameter else { return }
-
-            if let avAudioUnit = avAudioNode as? AVAudioUnit {
-                AudioUnitSetParameter(
-                    avAudioUnit.audioUnit,
-                    param: AudioUnitParameterID(def.address),
-                    to: newValue.clamped(to: range)
-                )
-            }
-
-            parameter.value = newValue.clamped(to: range)
+            parameter?.value = newValue.clamped(to: range)
         }
     }
 
