@@ -12,9 +12,14 @@
 // MARK: - C entry points
 
 void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long laneCount, SPFKTimelineMapping mapping,
-                          DSPAutomationAnchor anchor, bool glides) {
-    auto snapshot = new AutomationSnapshot{{}, mapping, anchor, glides};
+                          DSPAutomationAnchor anchor, const DSPRateChange *changes, long changeCount, bool glides) {
+    auto snapshot = new AutomationSnapshot{{}, mapping, anchor, {}, {}, glides};
     snapshot->lanes.reserve(laneCount);
+
+    if (changes != nullptr && changeCount > 0) {
+        snapshot->changes.assign(changes, changes + changeCount);
+        snapshot->changeSamples.assign(size_t(changeCount), 0);
+    }
 
     for (long i = 0; i < laneCount; ++i) {
         const DSPAutomationLane &lane = lanes[i];
@@ -138,6 +143,7 @@ void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFra
 
     AUAudioFrameCount frames = std::min(frameCount, maximumFrames);
     int64_t firstSample = int64_t(timestamp->mSampleTime);
+    foldChanges(firstSample);
 
     for (int parameter = 0; parameter < parameterCount; ++parameter) {
         int lane = laneOfParameter[parameter];
@@ -146,8 +152,7 @@ void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFra
         const AutomationLane &automation = current->lanes[lane];
         float *values = &buffers[size_t(parameter) * maximumFrames];
 
-        spfk_fill_automation(automation.segments.data(), long(automation.segments.size()), &current->mapping,
-                             firstSample, frames, &cursor[parameter], values);
+        fill(automation, parameter, firstSample, frames, values);
 
         if (yieldsToManual(parameter, automation)) {
             if (!manualWins[parameter]) {
@@ -171,6 +176,45 @@ void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFra
 
         rampers[parameter]->setAutomation(values, automation.multiplies);
     }
+
+    foldChanges(firstSample + frames);
+}
+
+void AutomationScheduler::foldChanges(int64_t throughSample) {
+    while (nextChange < current->changes.size() && current->changeSamples[nextChange] <= throughSample) {
+        activeMapping = spfk_timeline_fold(&activeMapping, current->changeSamples[nextChange],
+                                           current->changes[nextChange].rate);
+        ++nextChange;
+    }
+}
+
+void AutomationScheduler::fill(const AutomationLane &lane, int parameter, int64_t firstSample,
+                               AUAudioFrameCount frames, float *values) {
+    // Every lane splits at the same changes, so each starts from the block's mapping and only
+    // `foldChanges` advances it.
+    SPFKTimelineMapping mapping = activeMapping;
+    size_t change = nextChange;
+    AUAudioFrameCount done = 0;
+
+    while (done < frames) {
+        AUAudioFrameCount run = frames - done;
+
+        if (change < current->changes.size()) {
+            int64_t offset = current->changeSamples[change] - (firstSample + done);
+
+            if (offset <= 0) {
+                mapping = spfk_timeline_fold(&mapping, current->changeSamples[change], current->changes[change].rate);
+                ++change;
+                continue;
+            }
+
+            if (offset < int64_t(run)) run = AUAudioFrameCount(offset);
+        }
+
+        spfk_fill_automation(lane.segments.data(), long(lane.segments.size()), &mapping, firstSample + done, run,
+                             &cursor[parameter], values + done);
+        done += run;
+    }
 }
 
 void AutomationScheduler::endBlock(ParameterRamper *const *rampers) {
@@ -191,8 +235,8 @@ void AutomationScheduler::adopt(AutomationSnapshot *snapshot, const AudioTimeSta
 
         const AutomationLane &outgoing = current->lanes[lane];
         float value;
-        spfk_fill_automation(outgoing.segments.data(), long(outgoing.segments.size()), &current->mapping, firstSample,
-                             1, &cursor[parameter], &value);
+        spfk_fill_automation(outgoing.segments.data(), long(outgoing.segments.size()), &activeMapping, firstSample, 1,
+                             &cursor[parameter], &value);
 
         if (glideRemaining[parameter] > 0) {
             value += glideOffset[parameter] * float(glideRemaining[parameter]) / float(glideFrames);
@@ -208,6 +252,13 @@ void AutomationScheduler::adopt(AutomationSnapshot *snapshot, const AudioTimeSta
 
     current = snapshot;
     current->mapping.renderAnchor = bindAnchor(current->anchor, timestamp);
+
+    for (size_t i = 0; i < current->changes.size(); ++i) {
+        current->changeSamples[i] = bindAnchor(current->changes[i].effectiveFrom, timestamp);
+    }
+
+    activeMapping = current->mapping;
+    nextChange = 0;
 
     int laneOf[maxParameters];
     std::fill(laneOf, laneOf + maxParameters, -1);

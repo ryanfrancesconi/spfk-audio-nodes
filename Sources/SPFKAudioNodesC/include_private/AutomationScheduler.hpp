@@ -18,12 +18,14 @@ struct AutomationLane {
     std::vector<SPFKCurveSegment> segments;
 };
 
-/// One published state of a node's automation. Immutable once published, except the anchor the
+/// One published state of a node's automation. Immutable once published, except the anchors the
 /// render thread binds on adoption.
 struct AutomationSnapshot {
     std::vector<AutomationLane> lanes;
     SPFKTimelineMapping mapping;
     DSPAutomationAnchor anchor;
+    std::vector<DSPRateChange> changes;
+    std::vector<int64_t> changeSamples;
     bool glides;
 };
 
@@ -68,6 +70,10 @@ class AutomationScheduler {
     std::atomic<AutomationSnapshot *> pending{nullptr};
     AutomationSnapshot *current = nullptr;
 
+    // Render thread: the current snapshot's mapping folded through every change already reached.
+    SPFKTimelineMapping activeMapping{};
+    size_t nextChange = 0;
+
     AutomationSnapshot *retired[retireCapacity] = {};
     std::atomic<uint32_t> retiredHead{0}; // written by the render thread
     std::atomic<uint32_t> retiredTail{0}; // written by the publishing thread
@@ -109,6 +115,8 @@ class AutomationScheduler {
 
     void adopt(AutomationSnapshot *snapshot, const AudioTimeStamp *timestamp, ParameterRamper *const *rampers);
     int64_t bindAnchor(const DSPAutomationAnchor &anchor, const AudioTimeStamp *timestamp) const;
+    void foldChanges(int64_t throughSample);
+    void fill(const AutomationLane &lane, int parameter, int64_t firstSample, AUAudioFrameCount frames, float *values);
     void applyGlide(int parameter, float *values, AUAudioFrameCount frameCount);
     bool yieldsToManual(int parameter, const AutomationLane &lane);
 };

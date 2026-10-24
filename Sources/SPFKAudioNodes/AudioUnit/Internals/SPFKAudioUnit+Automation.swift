@@ -25,22 +25,10 @@ extension SPFKAudioUnit {
             flat += segments
         }
 
-        let anchor: DSPAutomationAnchor
-        let anchorSample: Int64
-
-        switch mapping.renderAnchor {
-        case let .sample(sample):
-            anchor = DSPAutomationAnchor(kind: .sample, sampleTime: sample, hostTime: 0)
-            anchorSample = sample
-        case let .host(hostTime):
-            anchor = DSPAutomationAnchor(kind: .host, sampleTime: 0, hostTime: hostTime)
-            anchorSample = 0
-        case .atAdoption:
-            anchor = DSPAutomationAnchor(kind: .atAdoption, sampleTime: 0, hostTime: 0)
-            anchorSample = 0
-        }
-
+        let anchor = mapping.renderAnchor.dspAnchor
+        let anchorSample: Int64 = if case let .sample(sample) = mapping.renderAnchor { sample } else { 0 }
         let renderMapping = mapping.renderMapping(anchorSample: anchorSample)
+        let changes = mapping.rateChanges.map { DSPRateChange(effectiveFrom: $0.effectiveFrom.dspAnchor, rate: $0.rate) }
 
         flat.withUnsafeBufferPointer { segments in
             let lanes = ranges.map { range in
@@ -54,7 +42,11 @@ extension SPFKAudioUnit {
             }
 
             lanes.withUnsafeBufferPointer { lanes in
-                publishAutomationDSP(dsp, lanes.baseAddress, lanes.count, renderMapping, anchor, glides)
+                changes.withUnsafeBufferPointer { changes in
+                    publishAutomationDSP(
+                        dsp, lanes.baseAddress, lanes.count, renderMapping, anchor, changes.baseAddress, changes.count, glides
+                    )
+                }
             }
         }
     }
@@ -65,7 +57,7 @@ extension SPFKAudioUnit {
             renderAnchor: 0, sourceAnchor: 0, rate: 1, direction: 1, loopStart: 0, loopEnd: 0, renderSampleRate: 1
         )
         let anchor = DSPAutomationAnchor(kind: .atAdoption, sampleTime: 0, hostTime: 0)
-        publishAutomationDSP(dsp, nil, 0, mapping, anchor, true)
+        publishAutomationDSP(dsp, nil, 0, mapping, anchor, nil, 0, true)
     }
 
     func renderClock() -> DSPRenderClock {
@@ -79,6 +71,16 @@ extension SPFKAudioUnit {
     /// The value `address` rendered on the last frame of the last block.
     func renderedValue(of address: AUParameterAddress) -> AUValue {
         renderedValueDSP(dsp, address)
+    }
+}
+
+extension TimelineAnchor {
+    var dspAnchor: DSPAutomationAnchor {
+        switch self {
+        case let .sample(sample): DSPAutomationAnchor(kind: .sample, sampleTime: sample, hostTime: 0)
+        case let .host(hostTime): DSPAutomationAnchor(kind: .host, sampleTime: 0, hostTime: hostTime)
+        case .atAdoption: DSPAutomationAnchor(kind: .atAdoption, sampleTime: 0, hostTime: 0)
+        }
     }
 }
 

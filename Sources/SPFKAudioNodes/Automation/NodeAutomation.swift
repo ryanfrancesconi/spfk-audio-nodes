@@ -116,7 +116,7 @@ public final class NodeAutomation {
         let clock = unit.renderClock()
         guard let mapping, clock.hasAnchor, let sample = renderSample(atHostTime: hostTime) else { return nil }
 
-        return mapping.position(atRenderSample: sample, anchorSample: clock.anchorSample)
+        return mapping.position(atRenderSample: sample, anchorSample: clock.anchorSample) { renderSample(atHostTime: $0) }
     }
 
     private static let secondsPerHostTick: Double = {

@@ -65,6 +65,58 @@ final class AutomationSchedulerRenderTests: TestCaseModel {
         #expect(abs(output[0][publishAt + 4800] - 0.1) < 1e-6)
     }
 
+    /// A scheduled rate change folds the mapping at its sample, mid-block, with no step.
+    @Test func aRateChangeFoldsAtItsSample() async throws {
+        let curve = try linear(to: 2)
+        let mapping = try TimelineMapping(renderAnchor: .sample(0), sourceAnchor: 0, renderSampleRate: rate)
+            .changingRate(to: 0.5, from: .sample(24_100))
+
+        let output = try await GainRenderHarness.render(
+            GainRenderHarness.makeDC(seconds: 1), blockSize: 512,
+            started: { channelGain in
+                channelGain.automation.publish(
+                    Dictionary(uniqueKeysWithValues: GainRenderHarness.gainAddresses.map { ($0, curve) }),
+                    mapping: mapping, combine: .multiply
+                )
+            }
+        )
+
+        let expected = output[0].indices.map { curve.value(at: mapping.position(atRenderSample: Int64($0)) ?? .nan) }
+        let error = CurveError(output[0], expected)
+
+        #expect(error.maxAbs <= 1e-6, "\(error)")
+        #expect(abs(output[0][24_100 + 9600] - Float((24_100.0 / rate + 0.1) / 2)) < 1e-5, "the slope halves at the change")
+    }
+
+    /// A change republished into running automation lands on its sample, and the republish itself
+    /// moves nothing: the old and new mappings agree up to the change.
+    @Test func aRateChangeRepublishedWhilePlayingLandsOnItsSample() async throws {
+        let curve = try linear(to: 2)
+        let mapping = try TimelineMapping(renderAnchor: .sample(0), sourceAnchor: 0, renderSampleRate: rate)
+        let retimed = try mapping.changingRate(to: 1.5, from: .sample(20_000))
+        let addresses = GainRenderHarness.gainAddresses
+
+        let output = try await GainRenderHarness.render(
+            GainRenderHarness.makeDC(seconds: 1), blockSize: 512,
+            started: { channelGain in
+                channelGain.automation.publish(
+                    Dictionary(uniqueKeysWithValues: addresses.map { ($0, curve) }), mapping: mapping, combine: .multiply
+                )
+            },
+            beforeBlock: { rendered, channelGain in
+                guard rendered == 10240 else { return }
+                channelGain.automation.publish(
+                    Dictionary(uniqueKeysWithValues: addresses.map { ($0, curve) }), mapping: retimed, combine: .multiply
+                )
+            }
+        )
+
+        let expected = output[0].indices.map { curve.value(at: retimed.position(atRenderSample: Int64($0)) ?? .nan) }
+        let error = CurveError(output[0], expected)
+
+        #expect(error.maxAbs <= 1e-6, "\(error)")
+    }
+
     /// A curve replacing a running one glides from where the old one was over 20 ms.
     @Test func replacementGlidesFromTheRunningValue() async throws {
         let replaceAt = 24576
