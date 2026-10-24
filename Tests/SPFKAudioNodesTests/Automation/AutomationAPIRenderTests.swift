@@ -26,15 +26,14 @@ final class AutomationAPIRenderTests: TestCaseModel {
     static let rampCases: [(blockSize: AVAudioFrameCount, delay: Float)] =
         [512, 4096].flatMap { block in [0.05, 0.2].map { (AVAudioFrameCount(block), Float($0)) } }
 
-    /// `ramp(to:duration:delay:)` starts `delay` after the next render and lasts `duration`.
+    /// `ramp(_:to:duration:delay:)` starts `delay` after the next render and lasts `duration`.
     @Test(arguments: rampCases)
     func rampStartsAfterItsDelay(blockSize: AVAudioFrameCount, delay: Float) async throws {
         let duration: Float = 0.25
         let output = try await GainRenderHarness.render(
             GainRenderHarness.makeDC(seconds: 1), blockSize: blockSize,
-            started: { [rate] in
-                $0.$leftGain.ramp(to: 0, duration: duration, delay: delay, sampleRate: Float(rate))
-                $0.$rightGain.ramp(to: 0, duration: duration, delay: delay, sampleRate: Float(rate))
+            started: {
+                try $0.automation.ramp(GainRenderHarness.gainAddresses, to: 0, duration: TimeInterval(duration), delay: TimeInterval(delay))
             }
         )
 
@@ -45,32 +44,26 @@ final class AutomationAPIRenderTests: TestCaseModel {
 
         reportMeasure("ramp block=\(blockSize) delay=\(delay)", "starts \(start) (expected \(expectedStart)), ends \(end) (expected \(expectedEnd))")
 
-        withKnownIssue("a delay over 4096 frames is clamped to 4096") {
-            #expect(abs(start - expectedStart) <= 1, "starts at \(start), expected \(expectedStart)")
-            #expect(abs(end - expectedEnd) <= 1, "ends at \(end), expected \(expectedEnd)")
-        } when: {
-            expectedStart > 4096
-        }
+        #expect(abs(start - expectedStart) <= 1, "starts at \(start), expected \(expectedStart)")
+        #expect(abs(end - expectedEnd) <= 1, "ends at \(end), expected \(expectedEnd)")
     }
 
-    /// `ramp(from:to:duration:)` reaches `from` first, then ramps to `to` over `duration`.
+    /// `ramp(_:from:to:duration:)` opens on `from` and reaches `to` after `duration`.
     @Test(arguments: [512, 4096] as [AVAudioFrameCount])
     func rampFromStartsAtItsSource(blockSize: AVAudioFrameCount) async throws {
         let output = try await GainRenderHarness.render(
             GainRenderHarness.makeDC(seconds: 1), blockSize: blockSize,
-            started: { $0.ramp(from: 0.2, to: 0.8, duration: 0.25) }
+            started: { try $0.automation.ramp(GainRenderHarness.gainAddresses, from: 0.2, to: 0.8, duration: 0.25) }
         )
 
-        let primer = Int(ParameterAutomationTiming.primerRampDuration * Float(rate))
-        let reached = output[0][primer...].firstIndex(where: { $0 >= 0.79999 }) ?? -1
+        let reached = output[0].firstIndex(where: { $0 >= 0.79999 }) ?? -1
         reportMeasure(
             "ramp(from:) block=\(blockSize)",
-            String(format: "frame 0 %.5f; at primer end (%d) %.5f; reaches 0.8 at %d (expected %d)",
-                   output[0][0], primer, output[0][primer], reached, primer + Int(0.25 * rate))
+            String(format: "frame 0 %.5f; reaches 0.8 at %d (expected %d)", output[0][0], reached, Int(0.25 * rate))
         )
 
-        #expect(abs(output[0][primer] - 0.2) < 1e-3, "at the primer's end the gain is \(output[0][primer])")
-        #expect(abs(reached - (primer + Int(0.25 * rate))) <= 1, "reaches 0.8 at \(reached)")
+        #expect(abs(output[0][0] - 0.2) < 1e-6, "opens at \(output[0][0])")
+        #expect(abs(reached - Int(0.25 * rate)) <= 1, "reaches 0.8 at \(reached)")
     }
 
     // MARK: - Track automation
@@ -196,19 +189,18 @@ final class AutomationAPIRenderTests: TestCaseModel {
         reportMeasure("automation observer delivery", summary.joined(separator: ", "))
     }
 
-    /// Recorded points merged with `replace(range:withPoints:)` play back at their times.
+    /// Recorded points merged with `replacing(range:with:)` play back at their times.
     @Test func replacedRangePlaysTheRecordedPoints() async throws {
-        let recorded: [(Float, AUValue)] = [(0.2, 0.3), (0.4, 0.8), (0.6, 0.5), (0.8, 0.9)]
-        let base = AutomationCurve(points: [ParameterAutomationPoint(targetValue: 1, startTime: 0, rampDuration: 0)])
-        let curve = base.replace(range: 0.1 ... 0.9, withPoints: recorded)
+        let recorded: [(Double, AUValue)] = [(0.2, 0.3), (0.4, 0.8), (0.6, 0.5), (0.8, 0.9)]
+        let steps = recorded.map { CurveSegment(start: $0.0, end: $0.0, startValue: $0.1, endValue: $0.1) }
+        let curve = try ParameterCurve(constant: 1).replacing(range: 0.1 ..< 0.9, with: steps)
 
         let output = try await GainRenderHarness.render(
             GainRenderHarness.makeDC(seconds: 1), blockSize: 512,
-            started: { try $0.automate(events: curve.events, startTime: GainRenderHarness.renderStart) }
+            started: { try GainRenderHarness.publish(curve, on: $0, combine: .replace) }
         )
 
-        let settle = Int(ParameterAutomationTiming.recordedPointRampDuration * Float(rate))
-        let played = recorded.map { output[0][Int($0.0 * Float(rate)) + settle + 1] }
+        let played = recorded.map { output[0][Int($0.0 * rate) + 1] }
         reportMeasure("replace", "played \(played) for \(recorded.map(\.1))")
 
         #expect(zip(played, recorded).allSatisfy { abs($0 - $1.1) < 1e-4 }, "played \(played)")
@@ -218,44 +210,46 @@ final class AutomationAPIRenderTests: TestCaseModel {
 
     /// Automating two parameters of one node leaves each on its own curve.
     @Test func parametersAutomateIndependently() async throws {
-        let left = [AutomationEvent(targetValue: 0, startTime: 0.25, rampDuration: 0.25)]
-        let right = [AutomationEvent(targetValue: 0.5, startTime: 0.1, rampDuration: 0)]
+        let left = try ParameterCurve([CurveSegment(start: 0.25, end: 0.5, startValue: 1, endValue: 0)])
+        let right = try ParameterCurve([CurveSegment(start: 0.1, end: 0.1, startValue: 1, endValue: 0.5)])
 
         let output = try await GainRenderHarness.render(
             GainRenderHarness.makeDC(seconds: 1), blockSize: 512,
             started: {
-                try $0.$leftGain.automate(events: left, startTime: GainRenderHarness.renderStart)
-                try $0.$rightGain.automate(events: right, startTime: GainRenderHarness.renderStart)
+                try $0.automation.publish(
+                    [ChannelGainParameter.leftGain.rawValue: left, ChannelGainParameter.rightGain.rawValue: right],
+                    mapping: TimelineMapping(renderAnchor: .sample(0), sourceAnchor: 0, renderSampleRate: GainRenderHarness.sampleRate)
+                )
             }
         )
 
         let frames = 0 ..< output[0].count
-        let leftError = CurveError(output[0], frames.map { piecewiseLinear(left, initial: 1, frame: $0, rate: rate) })
-        let rightError = CurveError(output[1], frames.map { piecewiseLinear(right, initial: 1, frame: $0, rate: rate) })
+        let leftError = CurveError(output[0], frames.map { left.value(at: Double($0) / rate) })
+        let rightError = CurveError(output[1], frames.map { right.value(at: Double($0) / rate) })
         reportMeasure("independent parameters", "left \(leftError); right \(rightError)")
 
         #expect(leftError.maxAbs <= 1e-5, "left \(leftError)")
         #expect(rightError.maxAbs <= 1e-5, "right \(rightError)")
     }
 
-    /// Two observers on one parameter, overlapping in time. Reference for R7: nothing specifies this.
-    @Test(.tags(.development)) func overlappingObserversReference() async throws {
-        let ramp = [AutomationEvent(targetValue: 0, startTime: 0.1, rampDuration: 0.5)]
-        let step = [AutomationEvent(targetValue: 0.5, startTime: 0.3, rampDuration: 0)]
+    /// A second publish on a parameter replaces the first: one automation per parameter, by
+    /// construction.
+    @Test func secondPublishReplacesTheFirst() async throws {
+        let ramp = try ParameterCurve([CurveSegment(start: 0.1, end: 0.6, startValue: 1, endValue: 0)])
+        let step = try ParameterCurve(constant: 0.5)
+        let replaceAt = Int(0.3 * rate) / 512 * 512
 
         let output = try await GainRenderHarness.render(
             GainRenderHarness.makeDC(seconds: 1), blockSize: 512,
-            started: {
-                try $0.$leftGain.automate(events: ramp, startTime: GainRenderHarness.renderStart)
-                try $0.$leftGain.addLoopObserver(events: step, startTime: GainRenderHarness.renderStart)
+            started: { try GainRenderHarness.publish(ramp, on: $0) },
+            beforeBlock: { rendered, channelGain in
+                if rendered == replaceAt { try GainRenderHarness.publish(step, on: channelGain) }
             }
         )
 
         let at = { (t: Double) in output[0][Int(t * self.rate)] }
-        reportMeasure(
-            "overlapping observers",
-            String(format: "0.2 s %.4f (ramp alone %.4f); 0.35 s %.4f; 0.7 s %.4f (ramp alone 0)",
-                   at(0.2), piecewiseLinear(ramp, initial: 1, frame: Int(0.2 * self.rate), rate: self.rate), at(0.35), at(0.7))
-        )
+        #expect(abs(at(0.2) - ramp.value(at: 0.2)) < 1e-6)
+        #expect(abs(at(0.35) - 0.5) < 1e-6)
+        #expect(abs(at(0.7) - 0.5) < 1e-6, "the first curve does not resume")
     }
 }

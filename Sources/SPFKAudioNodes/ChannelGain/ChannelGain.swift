@@ -53,13 +53,18 @@ public class ChannelGain: AudioEngineNodeAU, TypeDescribable {
     /// Encode a left/right input to mid/side
     @Parameter(ChannelGainParameter.midSideEncode.parameterDef) public var midSideEncode: Bool
 
-    /// Amplification Factor, from 0 ... x
-    open var gain: AUValue = 1 {
-        didSet {
-            leftGain = gain
-            rightGain = gain
+    /// The manual gain of both channels, from 0 ... x: what automation multiplies or replaces,
+    /// not necessarily what renders. ``NodeAutomation/renderedValue(of:)`` reads that.
+    open var gain: AUValue {
+        get { leftGain }
+        set {
+            leftGain = newValue
+            rightGain = newValue
         }
     }
+
+    /// Automation of `leftGain` and `rightGain`.
+    public let automation: NodeAutomation
 
     /// Amplification Factor in db
     public var dB: AUValue {
@@ -91,6 +96,8 @@ public class ChannelGain: AudioEngineNodeAU, TypeDescribable {
             named: Self.typeName,
             version: Self.version
         )
+
+        automation = try NodeAutomation(avAudioNode)
 
         if gainRange != ChannelGainParameter.defaultGainRange {
             $leftGain.def.range = gainRange

@@ -97,7 +97,7 @@ final class AutomationSchedulerRenderTests: TestCaseModel {
             started: { try GainRenderHarness.publish(ParameterCurve(constant: 0.5), on: $0) },
             beforeBlock: { rendered, channelGain in
                 guard rendered == stopAt else { return }
-                try GainRenderHarness.stopAutomation(on: channelGain)
+                channelGain.automation.stop()
             }
         )
 

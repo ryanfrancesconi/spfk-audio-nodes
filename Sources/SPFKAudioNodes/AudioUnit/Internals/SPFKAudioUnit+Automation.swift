@@ -6,18 +6,8 @@ import SPFKAudioBase
 import SPFKAudioBaseC
 import SPFKAudioNodesC
 
-/// How a curve combines with the parameter's own value.
-enum AutomationCombine: Sendable {
-    /// The parameter's value times the curve.
-    case multiply
-
-    /// The curve's value.
-    case replace
-}
-
 extension SPFKAudioUnit {
-    /// Replaces this unit's whole automation with `curves` against `mapping`. An empty dictionary
-    /// stops it, and each parameter returns to its own value over 20 ms.
+    /// Replaces this unit's whole automation with `curves` against `mapping`.
     func publishAutomation(
         _ curves: [AUParameterAddress: ParameterCurve],
         mapping: TimelineMapping,
@@ -64,6 +54,15 @@ extension SPFKAudioUnit {
                 publishAutomationDSP(dsp, lanes.baseAddress, lanes.count, renderMapping, anchor)
             }
         }
+    }
+
+    /// Ends this unit's automation; each parameter returns to its own value over 20 ms.
+    func stopAutomation() {
+        let mapping = SPFKTimelineMapping(
+            renderAnchor: 0, sourceAnchor: 0, rate: 1, direction: 1, loopStart: 0, loopEnd: 0, renderSampleRate: 1
+        )
+        let anchor = DSPAutomationAnchor(kind: .atAdoption, sampleTime: 0, hostTime: 0)
+        publishAutomationDSP(dsp, nil, 0, mapping, anchor)
     }
 
     /// The value `address` rendered on the last frame of the last block.

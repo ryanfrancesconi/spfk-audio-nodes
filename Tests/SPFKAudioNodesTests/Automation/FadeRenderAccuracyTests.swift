@@ -125,42 +125,31 @@ final class FadeRenderAccuracyTests: TestCaseModel {
 
     // MARK: - A set during automation (fact 6)
 
-    /// Every way of reading the gain mid-ramp returns the value the ramp has reached.
+    /// The rendered value reads back what the automation reached; `gain` reads the manual value
+    /// the automation multiplies.
     @Test func gainReadsBackWhatTheRampReached() async throws {
-        let fade = FadeDescription(inTime: 2)
+        let curve = try FadeDescription(inTime: 2).curve(regionDuration: 4)
         let input = try GainRenderHarness.makeDC(seconds: 1)
-        let live = liveFade(fade, regionDuration: 4)
         let readAt = 24576
 
-        var reads: (gain: AUValue, tree: AUValue, dsp: AUValue)?
+        var reads: (rendered: AUValue, gain: AUValue)?
 
         let output = try await GainRenderHarness.render(
             input, blockSize: 512,
-            configure: { $0.gain = live.initialGain },
-            started: { try $0.automate(events: live.events, startTime: GainRenderHarness.renderStart) },
+            configure: { $0.gain = 0.8 },
+            started: { try GainRenderHarness.publish(curve, on: $0) },
             beforeBlock: { rendered, channelGain in
                 guard rendered == readAt + 512 else { return }
-                let dsp = (channelGain.avAudioNode.auAudioUnit as? SPFKAudioUnit)?.dsp
-                reads = (
-                    channelGain.gain,
-                    channelGain.leftGain,
-                    dsp.map { getParameterValueDSP($0, ChannelGainParameter.leftGain.rawValue) } ?? .nan
-                )
+                reads = (channelGain.automation.renderedValue(of: ChannelGainParameter.leftGain.rawValue), channelGain.gain)
             }
         )
 
         let reached = output[0][readAt + 511]
         let read = try #require(reads)
-        reportMeasure(
-            "readback mid-ramp",
-            String(format: "rendered %.5f; gain %.5f, parameter %.5f, DSP %.5f", reached, read.gain, read.tree, read.dsp)
-        )
+        reportMeasure("readback mid-ramp", String(format: "rendered %.5f; read %.5f, gain %.5f", reached, read.rendered, read.gain))
 
-        withKnownIssue("no reader returns the automated value") {
-            #expect(abs(read.gain - reached) < 1e-3, "gain read \(read.gain), ramp at \(reached)")
-            #expect(abs(read.tree - reached) < 1e-3, "parameter read \(read.tree), ramp at \(reached)")
-            #expect(abs(read.dsp - reached) < 1e-3, "DSP read \(read.dsp), ramp at \(reached)")
-        }
+        #expect(abs(read.rendered - reached) < 1e-6, "rendered value read \(read.rendered), ramp at \(reached)")
+        #expect(read.gain == 0.8, "gain reads the manual value")
     }
 
     /// What a bare gain write does to a running fade. Reference for R7: nothing specifies this today.
