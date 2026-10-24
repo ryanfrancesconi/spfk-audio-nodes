@@ -44,7 +44,8 @@ public final class Metronome: @unchecked Sendable {
 
     private let state = State()
 
-    /// The tempo in beats per minute. Changes take effect at the next beat.
+    /// The tempo in beats per minute. A change takes effect from the next render: the position is
+    /// kept in samples, so the click grid moves at once rather than at the next beat.
     public var bpm: Bpm? {
         get { Bpm(state.lock.withLock { state.bpm }) }
         set {
@@ -119,10 +120,15 @@ public final class Metronome: @unchecked Sendable {
         // - memset/memcpy are C functions with no Swift runtime overhead.
         // No swift_allocObject, no objc_msgSend, no autorelease pools.
         sourceNode = AVAudioSourceNode(format: format) { isSilence, _, frameCount, outputData in
-            // Snapshot all mutable state in a single lock acquisition to avoid
-            // holding the lock during the per-frame loop below.
+            // Snapshot all mutable state and advance the sample counter in a single lock
+            // acquisition, so the lock is not held during the per-frame loop below and a `play`
+            // landing mid-render is never overwritten by this render's advance.
             let (bpm, beatsPerBar, subdivisions, isMuted, isPlaying, samplePosition): (Double, Int, Int, Bool, Bool, Int64) = state.lock.withLock {
-                (state.bpm, state.beatsPerBar, state.subdivisions, state.isMuted, state.isPlaying, state.samplePosition)
+                let snapshot = (state.bpm, state.beatsPerBar, state.subdivisions, state.isMuted, state.isPlaying, state.samplePosition)
+                if state.isPlaying, state.bpm > 0 {
+                    state.samplePosition += Int64(frameCount)
+                }
+                return snapshot
             }
 
             let ablPointer = UnsafeMutableAudioBufferListPointer(outputData)
@@ -141,17 +147,14 @@ public final class Metronome: @unchecked Sendable {
                 return noErr
             }
 
-            // Muted — zero the buffers but keep advancing the sample counter
-            // so beat position stays in sync with the transport. When unmuted
-            // mid-playback the clicks resume at the correct beat.
+            // Muted — zero the buffers. The sample counter has already advanced,
+            // so beat position stays in sync with the transport and clicks
+            // resume at the correct beat when unmuted mid-playback.
             if isMuted {
                 for buffer in ablPointer {
                     if let data = buffer.mData {
                         memset(data, 0, Int(buffer.mDataByteSize))
                     }
-                }
-                state.lock.withLock {
-                    state.samplePosition += Int64(frameCount)
                 }
                 isSilence.pointee = true
                 return noErr
@@ -209,12 +212,6 @@ public final class Metronome: @unchecked Sendable {
                 }
             }
 
-            // Advance the running sample counter so the next render call
-            // picks up where this one left off.
-            state.lock.withLock {
-                state.samplePosition += Int64(frameCount)
-            }
-
             isSilence.pointee = false
             return noErr
         }
@@ -231,11 +228,11 @@ public final class Metronome: @unchecked Sendable {
     }
 
     /// Start generating click audio from a time offset in seconds.
-    /// Converts the time to a beat offset using the current BPM.
     public func play(time: TimeInterval) {
-        let beatsPerSecond = state.bpm / 60.0
-        let beatOffset = time * beatsPerSecond
-        play(fromBeat: beatOffset)
+        state.lock.withLock {
+            state.samplePosition = Int64(time * sampleRate)
+            state.isPlaying = true
+        }
     }
 
     /// Start generating click audio from a specific beat offset.
