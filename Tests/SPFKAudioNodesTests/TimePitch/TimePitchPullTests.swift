@@ -153,4 +153,46 @@ final class TimePitchPullTests: TestCaseModel {
         #expect(intercepts.count > 10)
         #expect(spread <= 4)
     }
+
+    /// After a rate change, every click pulled once the ramp is over lands where a step to the new
+    /// rate at `rateChangeDelay` after the change puts it. Only at rates where a click survives the
+    /// stretch as a sharp peak: elsewhere peak-picking alone moves a click by up to ~60 frames, with
+    /// no change at all. Measured within 2 frames, except 2× → 0.5×, which lands a constant 24–26
+    /// frames late; the bound is that.
+    @Test(arguments: [(1, 0.5), (1, 2), (0.5, 2), (2, 0.5)] as [(Double, Double)])
+    func rateChangeLandsAtItsDelay(from oldRate: Double, to newRate: Double) async throws {
+        let sourceFrames = 12 * Int(sampleRate)
+        let input = try TimePitchRig.makeClicks(frames: sourceFrames, every: clickSpacing, first: clickSpacing / 2)
+        let rig = try await TimePitchRig(blockSize: 480) { $0.rate = AUValue(oldRate) }
+
+        let change = Int(sampleRate)
+        let inLatency = (rig.timePitch.latency(atRate: 1) - rig.timePitch.latency(atRate: 2)) * 2 * sampleRate
+        let outLatency = rig.timePitch.latency(atRate: 1) * sampleRate - inLatency
+        let delay = rig.timePitch.rateChangeDelay * sampleRate
+        let ramp = 0.02 * sampleRate
+        var pulledAtChange: Double = 0
+
+        rig.player.scheduleBuffer(input, completionHandler: nil)
+        rig.player.play()
+        let output = try rig.render(frames: change + 4 * Int(sampleRate)) { rendered in
+            guard rendered == change else { return }
+            pulledAtChange = Double(rig.timePitch.inputFramesPulled)
+            rig.timePitch.rate = AUValue(newRate)
+        }
+
+        #expect(abs(delay - (outLatency + ramp / 2)) < 0.5)
+
+        // The step model: the source heard at the delay, then the new rate.
+        let heardAtDelay = pulledAtChange - inLatency + oldRate * ramp / 2
+        let clicks = Array(stride(from: clickSpacing / 2, to: sourceFrames, by: clickSpacing))
+            .filter { Double($0) > pulledAtChange + inLatency + 2 * ramp * max(oldRate, newRate) }
+
+        let landing = landings(in: output[0], clicks: clicks) { click in
+            Double(change) + delay + (Double(click) - heardAtDelay) / newRate
+        }
+
+        reportTimePitch("retime \(oldRate)x->\(newRate)x step model", landing.description)
+        #expect(landing.deviations.count > 10)
+        #expect(landing.worst <= 32)
+    }
 }

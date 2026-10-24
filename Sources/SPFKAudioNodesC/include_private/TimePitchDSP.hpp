@@ -74,6 +74,7 @@ struct TimePitchDSP : DSPBase {
     double holdStartUntilSampleTime(double sampleTime);
     void holdStartUntilHostTime(uint64_t hostTime);
     double latencyAtRate(double rate);
+    double rateChangeDelay();
     int64_t framesPulled() const { return inputFramesPulled.load(std::memory_order_relaxed); }
 
     void setParameter(AUParameterAddress address, AUValue value, bool immediate) override;

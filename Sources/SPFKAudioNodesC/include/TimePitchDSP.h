@@ -35,6 +35,10 @@ void setQualityTimePitchDSP(DSPRef pDSP, TimePitchDSPQuality quality);
 /// The live kernel's latency at a constant `rate`, in seconds; 0 before render resources exist.
 double latencyAtRateTimePitchDSP(DSPRef pDSP, double rate);
 
+/// How long after a block applies a new rate the change is heard, modeled as one step: the output
+/// latency plus half the rate ramp. 0 before render resources exist.
+double rateChangeDelayTimePitchDSP(DSPRef pDSP);
+
 /// Every input frame pulled since render resources were allocated, bypassed or not.
 int64_t inputFramesPulledTimePitchDSP(DSPRef pDSP);
 

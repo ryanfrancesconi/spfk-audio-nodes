@@ -10,6 +10,8 @@ void setQualityTimePitchDSP(DSPRef pDSP, TimePitchDSPQuality quality) {
     static_cast<TimePitchDSP *>(pDSP)->setQuality(quality);
 }
 
+double rateChangeDelayTimePitchDSP(DSPRef pDSP) { return static_cast<TimePitchDSP *>(pDSP)->rateChangeDelay(); }
+
 double latencyAtRateTimePitchDSP(DSPRef pDSP, double rate) {
     return static_cast<TimePitchDSP *>(pDSP)->latencyAtRate(rate);
 }
@@ -87,6 +89,15 @@ void TimePitchDSP::setQuality(TimePitchDSPQuality newQuality) {
 double TimePitchDSP::latencyAtRate(double rate) {
     auto kernelRef = kernel.load(std::memory_order_acquire);
     return kernelRef ? TimePitchKernelLatencySeconds(kernelRef, rate) : 0;
+}
+
+double TimePitchDSP::rateChangeDelay() {
+    auto kernelRef = kernel.load(std::memory_order_acquire);
+    if (!kernelRef || sampleRate <= 0) return 0;
+
+    // Material pulled after the change is heard an output latency later, and a linear ramp lands
+    // where a step at its midpoint would.
+    return double(TimePitchKernelOutputLatencyFrames(kernelRef)) / sampleRate + kTimePitchRateRampSeconds / 2;
 }
 
 double TimePitchDSP::latencySeconds() {

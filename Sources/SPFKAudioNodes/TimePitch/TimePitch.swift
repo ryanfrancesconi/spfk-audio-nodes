@@ -107,6 +107,14 @@ public class TimePitch: AudioEngineNodeAU, TypeDescribable {
         return latencyAtRateTimePitchDSP(dsp, rate)
     }
 
+    /// How long after the block that applies a new rate the change is heard, as one step: material
+    /// pulled from then on follows the output latency, and the 20 ms ramp lands where a step at its
+    /// midpoint would. 0 before render resources exist.
+    public var rateChangeDelay: TimeInterval {
+        guard let dsp else { return 0 }
+        return rateChangeDelayTimePitchDSP(dsp)
+    }
+
     /// Starts the node at `sampleTime`, an output sample time: silence until then, and from then
     /// the stretcher from a reset. Returns the upstream sample time of that frame, at which a
     /// player feeding the node is started. For offline rendering, between renders; a time already
