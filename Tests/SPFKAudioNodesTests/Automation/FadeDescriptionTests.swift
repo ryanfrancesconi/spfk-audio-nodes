@@ -95,7 +95,7 @@ struct FadeDescriptionTests {
             AutomationEvent(targetValue: 0.55253565, startTime: 0.0, rampDuration: 0.2),
             AutomationEvent(targetValue: 0.7525375, startTime: 0.2, rampDuration: 0.2),
             AutomationEvent(targetValue: 0.87428844, startTime: 0.4, rampDuration: 0.2),
-            AutomationEvent(targetValue: 0.94954515, startTime: 0.6, rampDuration: 0.2),
+            AutomationEvent(targetValue: 0.9495452, startTime: 0.6, rampDuration: 0.2),
             AutomationEvent(targetValue: 1.0, startTime: 0.8, rampDuration: 0.19999999),
         ]
 
