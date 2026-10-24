@@ -5,8 +5,6 @@
 #import "DSPBase.h"
 #include "DSPBase.hpp"
 #import "ParameterRamper.h"
-#import <map>
-#import <string>
 
 AUInternalRenderBlock internalRenderBlockDSP(DSPRef pDSP) { return pDSP->internalRenderBlock(); }
 
@@ -268,73 +266,4 @@ void DSPBase::cloneFirstChannel(FrameRange range) {
         float *output = ((float *)outputBufferList->mBuffers[channel].mData) + range.start;
         std::copy(firstChannel, firstChannel + range.count, output);
     }
-}
-
-// A registry of creation functions.
-//
-// Note that this is a pointer because we can't guarantee the
-// order of initialization code. So we lazily init.
-
-using DSPFactoryMap = std::map<std::string, DSPBase::CreateFunction>;
-
-static DSPFactoryMap *factoryMap = nullptr;
-
-void DSPBase::addCreateFunction(const char *name, CreateFunction func) {
-    if (factoryMap == nullptr) {
-        factoryMap = new DSPFactoryMap;
-    }
-
-    assert(factoryMap->count(name) == 0 && "redundant DSP kernel registration");
-
-    (*factoryMap)[std::string(name)] = func;
-}
-
-DSPRef DSPBase::create(const char *name) {
-    assert(factoryMap && "Fatal error: node factory not initialized.");
-
-    auto iter = factoryMap->find(name);
-
-    if (iter == factoryMap->end()) {
-        printf("Unknown DSPBase subclass: %s\n", name);
-        return nullptr;
-    }
-
-    return iter->second();
-}
-
-DSPRef createDSP(OSType code) {
-    char name[5] = {0};
-
-    name[0] = (code >> 24) & 0xff;
-    name[1] = (code >> 16) & 0xff;
-    name[2] = (code >> 8) & 0xff;
-    name[3] = code & 0xff;
-    return DSPBase::create(name);
-}
-
-using DSPParameterMap = std::map<std::string, AUParameterAddress>;
-
-static DSPParameterMap *paramMap = nullptr;
-
-AUParameterAddress getParameterAddressDSP(const char *name) {
-    assert(paramMap && "getParameterAddressDSP: Fatal error: parameter map not initialized.");
-
-    auto iter = paramMap->find(name);
-
-    if (iter == paramMap->end()) {
-        printf("getParameterAddressDSP: Unknown parameter name: %s\n", name);
-        return 0;
-    }
-
-    return iter->second;
-}
-
-void DSPBase::addParameter(const char *name, AUParameterAddress address) {
-    if (paramMap == nullptr) {
-        paramMap = new DSPParameterMap;
-    }
-
-    assert(paramMap->count(name) == 0 && "Parameter already registered.");
-
-    (*paramMap)[name] = address;
 }

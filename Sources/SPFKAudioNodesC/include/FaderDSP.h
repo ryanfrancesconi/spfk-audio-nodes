@@ -10,7 +10,8 @@
 
 // visible to swift
 
-static const NSString *kAudioUnitFaderSubTypeString = @"fder";
+/// The Fader's `componentSubType`, which `createDSP` keys its DSP on.
+static const OSType kSPFKSubTypeFader = 'fder';
 
 typedef NS_CLOSED_ENUM(AUParameterAddress, FaderParameter) {
     FaderParameterLeftGain,

@@ -78,11 +78,9 @@ public class Fader: AudioEngineNodeAU, TypeDescribable {
     ///     that may exceed the default +12 dB ceiling.
     ///
     public init(gain: AUValue = 1, gainRange: ClosedRange<AUValue> = FaderParameter.defaultGainRange) async throws {
-        let subType = kAudioUnitFaderSubTypeString.fourCC ?? 0
-
         audioComponentDescription = AudioComponentDescription(
-            componentType: kAudioUnitType_MusicEffect,
-            componentSubType: subType,
+            componentType: kAudioUnitType_Effect,
+            componentSubType: kSPFKSubTypeFader,
             componentManufacturer: kAudioUnitManufacturer_Spongefork,
             componentFlags: AudioComponentFlags.sandboxSafe.rawValue,
             componentFlagsMask: 0

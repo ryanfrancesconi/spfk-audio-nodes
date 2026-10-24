@@ -14,9 +14,8 @@ CF_EXTERN_C_BEGIN
 /// Pointer to an instance of a DSPBase subclass
 typedef struct DSPBase *DSPRef;
 
+/// Creates the DSP for an AU `componentSubType`, or returns NULL for one with no DSP.
 DSPRef createDSP(OSType code);
-
-AUParameterAddress getParameterAddressDSP(const char *name);
 
 AUInternalRenderBlock internalRenderBlockDSP(DSPRef pDSP);
 

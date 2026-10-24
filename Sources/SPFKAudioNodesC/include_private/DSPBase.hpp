@@ -175,18 +175,6 @@ struct DSPBase {
     /// release envelope.
     virtual void noteOff(uint8_t note, uint8_t velocity) {}
 
-    /// Pointer to a factory function.
-    using CreateFunction = DSPRef (*)();
-
-    /// Adds a function to create a subclass by name.
-    static void addCreateFunction(const char *name, CreateFunction func);
-
-    /// Registers a parameter.
-    static void addParameter(const char *paramName, AUParameterAddress address);
-
-    /// Create a subclass by name.
-    static DSPRef create(const char *name);
-
     virtual void startRamp(const AUParameterEvent &event);
 
   private:
@@ -206,28 +194,3 @@ struct DSPBase {
     void performAllSimultaneousEvents(AUEventSampleTime now,
                                       AURenderEvent const *&event);
 };
-
-/// Registers a creation function when initialized.
-template <class T> struct DSPRegistration {
-    static DSPRef construct() { return new T(); }
-
-    DSPRegistration(const char *name) {
-        DSPBase::addCreateFunction(name, construct);
-    }
-};
-
-/// Convenience macro for registering a subclass of DSPBase.
-///
-/// You'll want to do `AK_REGISTER_DSP(AKMyClass, componentSubType)`
-#define AK_REGISTER_DSP(ClassName, Code)                                       \
-    DSPRegistration<ClassName> __register##ClassName(Code);
-
-struct ParameterRegistration {
-    ParameterRegistration(const char *name, AUParameterAddress address) {
-        DSPBase::addParameter(name, address);
-    }
-};
-
-#define AK_REGISTER_PARAMETER(ParamAddress)                                    \
-    ParameterRegistration __register_param_##ParamAddress(#ParamAddress,       \
-                                                          ParamAddress);
