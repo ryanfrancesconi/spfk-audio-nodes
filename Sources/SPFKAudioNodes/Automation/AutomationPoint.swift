@@ -41,7 +41,7 @@ public struct AutomationPoint: Equatable, Comparable, Codable, CustomStringConve
     public private(set) var dBValue: AUValue = 0
 
     /// Default is 0 ... +12dB, or 0 ... 4 linear gain
-    public private(set) var gainRange: ClosedRange<AUValue> = FaderParameter.defaultGainRange
+    public private(set) var gainRange: ClosedRange<AUValue> = ChannelGainParameter.defaultGainRange
 
     /// Default is 0 ... +12dB
     public private(set) var dBRange: ClosedRange<AUValue> = (dBMin ... 12) {

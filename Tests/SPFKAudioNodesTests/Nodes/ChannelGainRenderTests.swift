@@ -10,9 +10,9 @@ import Testing
 
 @testable import SPFKAudioNodes
 
-/// What the Fader renders: gain, bypass and channel operations, sample for sample.
+/// What the ChannelGain renders: gain, bypass and channel operations, sample for sample.
 @Suite(.tags(.engine), .serialized)
-final class FaderRenderTests: TestCaseModel {
+final class ChannelGainRenderTests: TestCaseModel {
     private let sampleRate: Double = 48000
 
     private func makeBuffer(frames: AVAudioFrameCount, fill: (_ channel: Int, _ frame: Int) -> Float) throws -> AVAudioPCMBuffer {
@@ -47,24 +47,24 @@ final class FaderRenderTests: TestCaseModel {
         }
     }
 
-    /// Player → Fader → output, rendered offline in blocks of `blockSize`. `configure` runs before
+    /// Player → ChannelGain → output, rendered offline in blocks of `blockSize`. `configure` runs before
     /// the nodes are connected, and so before render resources are allocated, so its sets are not
     /// dezippered. `started` runs once the engine is running, before the first render.
     func render(
         _ input: AVAudioPCMBuffer,
         blockSize: AVAudioFrameCount = 4096,
-        configure: (Fader) throws -> Void = { _ in },
-        started: (Fader) throws -> Void = { _ in }
+        configure: (ChannelGain) throws -> Void = { _ in },
+        started: (ChannelGain) throws -> Void = { _ in }
     ) async throws -> [[Float]] {
         let engine = AVAudioEngine()
         let player = AVAudioPlayerNode()
-        let fader = try await Fader()
-        try configure(fader)
+        let channelGain = try await ChannelGain()
+        try configure(channelGain)
 
         engine.attach(player)
-        engine.attach(fader.avAudioNode)
-        engine.connect(player, to: fader.avAudioNode, format: input.format)
-        engine.connect(fader.avAudioNode, to: engine.outputNode, format: input.format)
+        engine.attach(channelGain.avAudioNode)
+        engine.connect(player, to: channelGain.avAudioNode, format: input.format)
+        engine.connect(channelGain.avAudioNode, to: engine.outputNode, format: input.format)
 
         try engine.enableManualRenderingMode(.offline, format: input.format, maximumFrameCount: blockSize)
         try engine.start()
@@ -72,7 +72,7 @@ final class FaderRenderTests: TestCaseModel {
 
         player.scheduleBuffer(input, completionHandler: nil)
         player.play()
-        try started(fader)
+        try started(channelGain)
 
         let block = try #require(AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: blockSize))
         var result: [[Float]] = [[], []]
@@ -111,10 +111,10 @@ final class FaderRenderTests: TestCaseModel {
     @Test func setWhileRunningReachesTheDSP() async throws {
         var readBack: AUValue?
 
-        let output = try await render(makeDC(frames: 4096), started: { fader in
-            fader.leftGain = 0.25
-            if let dsp = (fader.avAudioNode.auAudioUnit as? SPFKAudioUnit)?.dsp {
-                readBack = getParameterValueDSP(dsp, FaderParameter.leftGain.rawValue)
+        let output = try await render(makeDC(frames: 4096), started: { channelGain in
+            channelGain.leftGain = 0.25
+            if let dsp = (channelGain.avAudioNode.auAudioUnit as? SPFKAudioUnit)?.dsp {
+                readBack = getParameterValueDSP(dsp, ChannelGainParameter.leftGain.rawValue)
             }
         })
 
@@ -168,12 +168,12 @@ final class FaderRenderTests: TestCaseModel {
         let format = try #require(AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2))
         let engine = AVAudioEngine()
         let source = AVAudioSourceNode(format: format) { _, _, _, _ in kAudioUnitErr_NoConnection }
-        let fader = try await Fader()
+        let channelGain = try await ChannelGain()
 
         engine.attach(source)
-        engine.attach(fader.avAudioNode)
-        engine.connect(source, to: fader.avAudioNode, format: format)
-        engine.connect(fader.avAudioNode, to: engine.outputNode, format: format)
+        engine.attach(channelGain.avAudioNode)
+        engine.connect(source, to: channelGain.avAudioNode, format: format)
+        engine.connect(channelGain.avAudioNode, to: engine.outputNode, format: format)
 
         try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 512)
         try engine.start()
@@ -186,7 +186,7 @@ final class FaderRenderTests: TestCaseModel {
 
     // MARK: - Automation timing
 
-    private func automate(_ events: [AutomationEvent]) -> (Fader) throws -> Void {
+    private func automate(_ events: [AutomationEvent]) -> (ChannelGain) throws -> Void {
         { [sampleRate] in try $0.automate(events: events, startTime: AVAudioTime(sampleTime: 0, atRate: sampleRate)) }
     }
 

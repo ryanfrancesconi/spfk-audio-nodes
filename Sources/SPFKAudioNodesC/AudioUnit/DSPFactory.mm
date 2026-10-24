@@ -2,13 +2,13 @@
 // https://github.com/ryanfrancesconi/spfk-audio-nodes
 
 #import "DSPBase.h"
-#include "FaderDSP.hpp"
+#include "ChannelGainDSP.hpp"
 
 /// Returns nullptr for a subtype with no DSP.
 DSPRef createDSP(OSType code) {
     switch (code) {
-    case kSPFKSubTypeFader:
-        return new FaderDSP();
+    case kSPFKSubTypeChannelGain:
+        return new ChannelGainDSP();
 
     default:
         return nullptr;

@@ -4,7 +4,7 @@ import AVFoundation
 import SPFKAUHost
 import SPFKBase
 
-/// A track containing a mixer input, fader output, and an effects chain.
+/// A track containing a mixer input, channel gain output, and an effects chain.
 ///
 /// Isolated to `@MainActor` — all access originates from `@MainActor AudioWorkspace`.
 /// Protocol conformances to `AudioUnitChainDelegate` and `AudioEngineNode` use
@@ -17,11 +17,11 @@ public final class AudioTrack {
     public let mixer: MixerWrapper
 
     /// output
-    public let fader: Fader
+    public let channelGain: ChannelGain
     
     public var gain: AUValue {
-        get { fader.gain }
-        set { fader.gain = newValue }
+        get { channelGain.gain }
+        set { channelGain.gain = newValue }
     }
 
     /// effects
@@ -37,9 +37,9 @@ public final class AudioTrack {
         self.delegate = delegate
 
         mixer = MixerWrapper()
-        fader = try await Fader()
+        channelGain = try await ChannelGain()
 
-        try await audioUnitChain.updateIO(input: mixer.avAudioNode, output: fader.avAudioNode)
+        try await audioUnitChain.updateIO(input: mixer.avAudioNode, output: channelGain.avAudioNode)
     }
 }
 
@@ -82,7 +82,7 @@ extension AudioTrack: @preconcurrency AudioUnitChainDelegate {
 
 extension AudioTrack: @preconcurrency AudioEngineNode {
     public var inputNode: AVAudioNode? { mixer.avAudioNode }
-    public var outputNode: AVAudioNode? { fader.avAudioNode }
+    public var outputNode: AVAudioNode? { channelGain.avAudioNode }
 }
 
 public protocol AudioTrackDelegate: AnyObject, AudioUnitChainDelegate {}

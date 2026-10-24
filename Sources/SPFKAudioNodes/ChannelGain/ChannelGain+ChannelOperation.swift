@@ -4,7 +4,7 @@ import AVFoundation
 import SPFKAudioBase
 import SPFKAudioNodesC
 
-extension Fader {
+extension ChannelGain {
     /// The channel parameters as one operation. A mono operation plays the same signal on both
     /// sides.
     public var channelOperation: ChannelOperation {
@@ -22,7 +22,7 @@ extension Fader {
             return .none
         }
         set {
-            var state = FaderChannelState(
+            var state = ChannelGainOperationState(
                 flipStereo: false,
                 mixToMono: false,
                 monoSource: UInt8(monoSource.rounded()),
@@ -54,7 +54,7 @@ extension Fader {
             // One store, so a render never plays half an operation. The parameter writes after it
             // keep the AU's parameter tree current; each lands a value the DSP already holds.
             if let dsp = (avAudioNode.auAudioUnit as? SPFKAudioUnit)?.dsp {
-                setChannelStateFaderDSP(dsp, state)
+                setOperationStateChannelGainDSP(dsp, state)
             }
 
             mixToMono = state.mixToMono

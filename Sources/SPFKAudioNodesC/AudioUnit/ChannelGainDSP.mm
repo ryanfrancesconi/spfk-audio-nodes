@@ -1,22 +1,20 @@
-// Copyright Ryan Francesconi. All Rights Reserved. Revision History at
-// https://github.com/ryanfrancesconi/spfk-audio-nodes Heavily based on the AudioKit version. All Rights Reserved.
-// Revision History at http://github.com/AudioKit/AudioKit/
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
 
-#include "FaderDSP.hpp"
+#include "ChannelGainDSP.hpp"
 #include <cstring>
 
-void setChannelStateFaderDSP(DSPRef pDSP, FaderChannelState state) {
-    static_cast<FaderDSP *>(pDSP)->setChannelState(state);
+void setOperationStateChannelGainDSP(DSPRef pDSP, ChannelGainOperationState state) {
+    static_cast<ChannelGainDSP *>(pDSP)->setOperationState(state);
 }
 
-FaderDSP::FaderDSP() : DSPBase(1, true) {
-    parameters[FaderParameterLeftGain] = &leftGainRamp;
-    parameters[FaderParameterRightGain] = &rightGainRamp;
-    channelState.store(pack(FaderChannelState{.midSideWidth = 1.f}));
+ChannelGainDSP::ChannelGainDSP() : DSPBase(1, true) {
+    parameters[ChannelGainParameterLeftGain] = &leftGainRamp;
+    parameters[ChannelGainParameterRightGain] = &rightGainRamp;
+    operationState.store(pack(ChannelGainOperationState{.midSideWidth = 1.f}));
 }
 
 // Bits 0-3 the flags, 8-15 the mono source, 32-63 the width's float bits.
-uint64_t FaderDSP::pack(FaderChannelState state) {
+uint64_t ChannelGainDSP::pack(ChannelGainOperationState state) {
     uint32_t width;
     std::memcpy(&width, &state.midSideWidth, sizeof(width));
 
@@ -24,8 +22,8 @@ uint64_t FaderDSP::pack(FaderChannelState state) {
            uint64_t(state.midSideEncode) << 3 | uint64_t(state.monoSource) << 8 | uint64_t(width) << 32;
 }
 
-FaderChannelState FaderDSP::unpack(uint64_t bits) {
-    FaderChannelState state;
+ChannelGainOperationState ChannelGainDSP::unpack(uint64_t bits) {
+    ChannelGainOperationState state;
     state.flipStereo = bits & 1;
     state.mixToMono = bits >> 1 & 1;
     state.midSideDecode = bits >> 2 & 1;
@@ -37,73 +35,73 @@ FaderChannelState FaderDSP::unpack(uint64_t bits) {
     return state;
 }
 
-void FaderDSP::setChannelParameter(AUParameterAddress address, AUValue value) {
-    uint64_t expected = channelState.load();
+void ChannelGainDSP::setOperationParameter(AUParameterAddress address, AUValue value) {
+    uint64_t expected = operationState.load();
     uint64_t desired;
 
     do {
-        FaderChannelState state = unpack(expected);
+        ChannelGainOperationState state = unpack(expected);
 
         switch (address) {
-        case FaderParameterFlipStereo:
+        case ChannelGainParameterFlipStereo:
             state.flipStereo = value > 0.5f;
             break;
 
-        case FaderParameterMixToMono:
+        case ChannelGainParameterMixToMono:
             state.mixToMono = value > 0.5f;
             break;
 
-        case FaderParameterMonoSource:
+        case ChannelGainParameterMonoSource:
             state.monoSource = uint8_t(roundf(value));
             break;
 
-        case FaderParameterMidSideDecode:
+        case ChannelGainParameterMidSideDecode:
             state.midSideDecode = value > 0.5f;
             break;
 
-        case FaderParameterMidSideWidth:
+        case ChannelGainParameterMidSideWidth:
             state.midSideWidth = value;
             break;
 
-        case FaderParameterMidSideEncode:
+        case ChannelGainParameterMidSideEncode:
             state.midSideEncode = value > 0.5f;
             break;
         }
 
         desired = pack(state);
-    } while (!channelState.compare_exchange_weak(expected, desired));
+    } while (!operationState.compare_exchange_weak(expected, desired));
 }
 
 // Uses the ParameterAddress as a key
-void FaderDSP::setParameter(AUParameterAddress address, AUValue value, bool immediate) {
-    if (isChannelParameter(address)) {
-        setChannelParameter(address, value);
+void ChannelGainDSP::setParameter(AUParameterAddress address, AUValue value, bool immediate) {
+    if (isOperationParameter(address)) {
+        setOperationParameter(address, value);
     } else {
         DSPBase::setParameter(address, value, immediate);
     }
 }
 
 // Uses the ParameterAddress as a key
-float FaderDSP::getParameter(AUParameterAddress address) {
-    FaderChannelState state = unpack(channelState.load());
+float ChannelGainDSP::getParameter(AUParameterAddress address) {
+    ChannelGainOperationState state = unpack(operationState.load());
 
     switch (address) {
-    case FaderParameterFlipStereo:
+    case ChannelGainParameterFlipStereo:
         return state.flipStereo ? 1.f : 0.f;
 
-    case FaderParameterMixToMono:
+    case ChannelGainParameterMixToMono:
         return state.mixToMono ? 1.f : 0.f;
 
-    case FaderParameterMonoSource:
+    case ChannelGainParameterMonoSource:
         return (float)state.monoSource;
 
-    case FaderParameterMidSideDecode:
+    case ChannelGainParameterMidSideDecode:
         return state.midSideDecode ? 1.f : 0.f;
 
-    case FaderParameterMidSideWidth:
+    case ChannelGainParameterMidSideWidth:
         return state.midSideWidth;
 
-    case FaderParameterMidSideEncode:
+    case ChannelGainParameterMidSideEncode:
         return state.midSideEncode ? 1.f : 0.f;
 
     default:
@@ -111,16 +109,16 @@ float FaderDSP::getParameter(AUParameterAddress address) {
     }
 }
 
-void FaderDSP::startRamp(const AUParameterEvent &event) {
-    if (isChannelParameter(event.parameterAddress)) {
-        setChannelParameter(event.parameterAddress, event.value);
+void ChannelGainDSP::startRamp(const AUParameterEvent &event) {
+    if (isOperationParameter(event.parameterAddress)) {
+        setOperationParameter(event.parameterAddress, event.value);
     } else {
         DSPBase::startRamp(event);
     }
 }
 
-void FaderDSP::process(FrameRange range) {
-    const FaderChannelState channel = unpack(channelState.load(std::memory_order_relaxed));
+void ChannelGainDSP::process(FrameRange range) {
+    const ChannelGainOperationState channel = unpack(operationState.load(std::memory_order_relaxed));
 
     for (auto i : range) {
         float leftIn = inputSample(0, i);

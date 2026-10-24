@@ -5,8 +5,6 @@ import SPFKAudioBase
 import SPFKAudioNodesC
 import SPFKBase
 
-// NOTE: `AutomationEvent` is a SPFKAudioC C++ struct pulled from AudioKit
-
 extension RegionFadeDescription {
     /// Generate an `AutomationEvent` curve from internal values
     ///

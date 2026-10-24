@@ -1,6 +1,4 @@
-// Copyright Ryan Francesconi. All Rights Reserved.
-// Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
-// Based on the AudioKit version. All Rights Reserved.
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
 
 #include "ParameterAutomation.h"
 #include <algorithm>

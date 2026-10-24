@@ -9,9 +9,9 @@ import Testing
 
 @testable import SPFKAudioNodes
 
-/// The Fader's real-time channel stage must play exactly what the render's buffer step writes.
+/// The ChannelGain's real-time channel stage must play exactly what the render's buffer step writes.
 @Suite(.tags(.engine), .serialized)
-final class FaderChannelOperationTests: TestCaseModel {
+final class ChannelGainChannelOperationTests: TestCaseModel {
     private let frameCount: AVAudioFrameCount = 4096
 
     private func makeInput() throws -> AVAudioPCMBuffer {
@@ -36,18 +36,18 @@ final class FaderChannelOperationTests: TestCaseModel {
         }
     }
 
-    /// Player → Fader → output, rendered offline. Connected straight to the output node so no mixer
+    /// Player → ChannelGain → output, rendered offline. Connected straight to the output node so no mixer
     /// pan law touches the result.
     private func render(_ input: AVAudioPCMBuffer, operation: ChannelOperation) async throws -> AVAudioPCMBuffer {
         let engine = AVAudioEngine()
         let player = AVAudioPlayerNode()
-        let fader = try await Fader()
-        fader.channelOperation = operation
+        let channelGain = try await ChannelGain()
+        channelGain.channelOperation = operation
 
         engine.attach(player)
-        engine.attach(fader.avAudioNode)
-        engine.connect(player, to: fader.avAudioNode, format: input.format)
-        engine.connect(fader.avAudioNode, to: engine.outputNode, format: input.format)
+        engine.attach(channelGain.avAudioNode)
+        engine.connect(player, to: channelGain.avAudioNode, format: input.format)
+        engine.connect(channelGain.avAudioNode, to: engine.outputNode, format: input.format)
 
         try engine.enableManualRenderingMode(.offline, format: input.format, maximumFrameCount: frameCount)
         try engine.start()
@@ -66,7 +66,7 @@ final class FaderChannelOperationTests: TestCaseModel {
         ChannelOperation.none, .swap, .mono(.average), .mono(.left), .mono(.right),
         .midSideDecode(width: 1), .midSideDecode(width: 0.37), .midSideDecode(width: 2), .midSideEncode,
     ])
-    func faderMatchesBufferStep(operation: ChannelOperation) async throws {
+    func channelGainMatchesBufferStep(operation: ChannelOperation) async throws {
         let input = try makeInput()
         let played = try await channels(render(input, operation: operation))
         let written = try channels(input.applyingChannelOperation(operation))
@@ -80,10 +80,10 @@ final class FaderChannelOperationTests: TestCaseModel {
     }
 
     @Test func channelOperationRoundTrips() async throws {
-        let fader = try await Fader()
+        let channelGain = try await ChannelGain()
         for operation in [ChannelOperation.swap, .mono(.right), .midSideDecode(width: 1.25), .midSideEncode, .none] {
-            fader.channelOperation = operation
-            #expect(fader.channelOperation == operation)
+            channelGain.channelOperation = operation
+            #expect(channelGain.channelOperation == operation)
         }
     }
 }

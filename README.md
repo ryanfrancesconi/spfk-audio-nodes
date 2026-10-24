@@ -12,7 +12,7 @@ Extracted from [SPFKAudioWorkspace](https://github.com/ryanfrancesconi/spfk-audi
 
 | Type | Description |
 |------|-------------|
-| **`Fader`** | A stereo fader audio unit: independent left/right gain, stereo flip, mono mixdown, dB conversion, parameter automation |
+| **`ChannelGain`** | A stereo gain and channel-operation audio unit: independent left/right gain, swap, mono mixdown, mid/side decode and encode, dB conversion, parameter automation |
 | **`NodeParameter`** / **`Parameter`** / **`NodeParameterDef`** | An `AUParameter` wrapped with safe optional access, clamping, ramping and automation recording |
 | **`NodeParameterType`** | What a parameter is, for a node declaring its own |
 | **`AutomationCurve`** / **`AutomationPoint`** | Curved automation over any time-varying parameter, converted to the linear ramps DSP consumes |
@@ -22,7 +22,7 @@ Extracted from [SPFKAudioWorkspace](https://github.com/ryanfrancesconi/spfk-audi
 | **`StreamPlayer`** / **`StreamPlayerEvent`** | Buffer-queue playback for containers `AVAudioFile` cannot open |
 | **`TransportSourcePlayer`** | The surface a transport drives, whether the audio came from a file or a stream |
 | **`Metronome`** / **`MetronomeClick`** / **`MetronomeSoundSet`** | Beat, bar and subdivision clicks with configurable sound sets |
-| **`AudioTrack`** / **`AudioTrackDelegate`** | A mixer input, a fader output and an effects chain, with a connect/detach lifecycle |
+| **`AudioTrack`** / **`AudioTrackDelegate`** | A mixer input, a channel gain output and an effects chain, with a connect/detach lifecycle |
 | **`MixerWrapper`** / **`Mixable`** | `AVAudioMixerNode` with volume and pan |
 | **`EngineRenderer`** / **`EngineRendererOptions`** | Actor-based offline bounce of an engine graph in manual rendering mode |
 | **`AudioEngineNodeAU`** / **`SPFKAudioUnit`** | The node-level audio unit surface everything above is built on |

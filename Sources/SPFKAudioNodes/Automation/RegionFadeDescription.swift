@@ -53,7 +53,7 @@ public struct RegionFadeDescription {
 
     public var isFaded: Bool { !fade.isEmpty }
 
-    /// Returns the fader gain at a given playback position within the file.
+    /// Returns the gain at a given playback position within the file.
     ///
     /// Requires `segmentDuration` to be set to `fileDuration - playbackOffset`
     /// so the fade-out zone boundary can be derived.

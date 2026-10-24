@@ -10,34 +10,34 @@ import Numerics
 @testable import SPFKAudioNodes
 
 @Suite
-final class FaderTests: TestCaseModel {
+final class ChannelGainTests: TestCaseModel {
     init() async throws {}
 
     @Test func create() async throws {
-        var fader: Fader? = try await Fader(gain: 2)
+        var channelGain: ChannelGain? = try await ChannelGain(gain: 2)
 
-        #expect(fader?.leftGain == 2)
-        #expect(fader?.rightGain == 2)
-        #expect(fader?.flipStereo == false)
-        #expect(fader?.mixToMono == false)
+        #expect(channelGain?.leftGain == 2)
+        #expect(channelGain?.rightGain == 2)
+        #expect(channelGain?.flipStereo == false)
+        #expect(channelGain?.mixToMono == false)
 
-        fader = nil
+        channelGain = nil
     }
 
     @Test func defaultGain() async throws {
-        var fader: Fader? = try await Fader()
+        var channelGain: ChannelGain? = try await ChannelGain()
 
-        #expect(fader?.leftGain == 1)
-        #expect(fader?.rightGain == 1)
-        #expect(fader?.gain == 1)
+        #expect(channelGain?.leftGain == 1)
+        #expect(channelGain?.rightGain == 1)
+        #expect(channelGain?.gain == 1)
 
-        fader = nil
+        channelGain = nil
     }
 
     @Test func gainSyncsLeftRight() async throws {
-        var fader: Fader? = try await Fader(gain: 1)
-        guard let f = fader else {
-            Issue.record("Fader is nil")
+        var channelGain: ChannelGain? = try await ChannelGain(gain: 1)
+        guard let f = channelGain else {
+            Issue.record("ChannelGain is nil")
             return
         }
 
@@ -51,13 +51,13 @@ final class FaderTests: TestCaseModel {
         #expect(f.leftGain == 2)
         #expect(f.rightGain == 2)
 
-        fader = nil
+        channelGain = nil
     }
 
     @Test func dBConversion() async throws {
-        var fader: Fader? = try await Fader(gain: 1)
-        guard let f = fader else {
-            Issue.record("Fader is nil")
+        var channelGain: ChannelGain? = try await ChannelGain(gain: 1)
+        guard let f = channelGain else {
+            Issue.record("ChannelGain is nil")
             return
         }
 
@@ -72,13 +72,13 @@ final class FaderTests: TestCaseModel {
         f.gain = 0
         #expect(f.dB == -Float.infinity)
 
-        fader = nil
+        channelGain = nil
     }
 
     @Test func stereoProperties() async throws {
-        var fader: Fader? = try await Fader(gain: 1)
-        guard let f = fader else {
-            Issue.record("Fader is nil")
+        var channelGain: ChannelGain? = try await ChannelGain(gain: 1)
+        guard let f = channelGain else {
+            Issue.record("ChannelGain is nil")
             return
         }
 
@@ -88,13 +88,13 @@ final class FaderTests: TestCaseModel {
         f.mixToMono = true
         #expect(f.mixToMono == true)
 
-        fader = nil
+        channelGain = nil
     }
 
     @Test func independentChannelGain() async throws {
-        var fader: Fader? = try await Fader(gain: 1)
-        guard let f = fader else {
-            Issue.record("Fader is nil")
+        var channelGain: ChannelGain? = try await ChannelGain(gain: 1)
+        guard let f = channelGain else {
+            Issue.record("ChannelGain is nil")
             return
         }
 
@@ -107,13 +107,13 @@ final class FaderTests: TestCaseModel {
         #expect(f.rightGain == 0.3)
         #expect(f.leftGain == 0.8) // unchanged
 
-        fader = nil
+        channelGain = nil
     }
 
     @Test func bypass() async throws {
-        var fader: Fader? = try await Fader(gain: 1)
-        guard let f = fader else {
-            Issue.record("Fader is nil")
+        var channelGain: ChannelGain? = try await ChannelGain(gain: 1)
+        guard let f = channelGain else {
+            Issue.record("ChannelGain is nil")
             return
         }
 
@@ -123,18 +123,18 @@ final class FaderTests: TestCaseModel {
         f.isBypassed = false
         #expect(f.isBypassed == false)
 
-        fader = nil
+        channelGain = nil
     }
 
     @Test func parameterUnitsMatchTheirDefinitions() async throws {
-        let fader = try await Fader()
+        let channelGain = try await ChannelGain()
 
-        for param in fader.parameters {
+        for param in channelGain.parameters {
             #expect(param.parameter?.unit == param.def.unit, "\(param.def.identifier)")
         }
 
-        #expect(fader.$leftGain.parameter?.unit == .linearGain)
-        #expect(fader.$rightGain.parameter?.unit == .linearGain)
-        #expect(fader.$monoSource.parameter?.unit == .indexed)
+        #expect(channelGain.$leftGain.parameter?.unit == .linearGain)
+        #expect(channelGain.$rightGain.parameter?.unit == .linearGain)
+        #expect(channelGain.$monoSource.parameter?.unit == .indexed)
     }
 }

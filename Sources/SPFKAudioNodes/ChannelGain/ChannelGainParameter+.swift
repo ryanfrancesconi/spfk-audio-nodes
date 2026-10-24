@@ -3,8 +3,8 @@
 import SPFKAudioNodesC
 import SPFKBase
 
-/// Extends the `FaderParameter` enum defined in `SPFKAudioNodesC`
-extension FaderParameter {
+/// Extends the `ChannelGainParameter` enum defined in `SPFKAudioNodesC`
+extension ChannelGainParameter {
     /// Gain can be any non-negative number -- however 0 - 4 is
     /// a practical range: 0 ... +12dB
     public static let defaultGainRange: ClosedRange<AUValue> = 0 ... 4

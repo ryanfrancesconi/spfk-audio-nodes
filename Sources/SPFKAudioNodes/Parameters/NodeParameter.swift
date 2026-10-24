@@ -1,11 +1,10 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
-// Heavily based on the AudioKit version. All Rights Reserved. Revision History at http://github.com/AudioKit/AudioKit/
 
 import AVFoundation
 import SPFKAudioBase
 import SPFKBase
 
-/// NodeParameter wraps AUParameter in a user-friendly interface and adds some AudioKit-specific functionality.
+/// Wraps an AUParameter with clamped value access, ramping and automation.
 public class NodeParameter {
     public private(set) weak var avAudioNode: AVAudioNode?
 

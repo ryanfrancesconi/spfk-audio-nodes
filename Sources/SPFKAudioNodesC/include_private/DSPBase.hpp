@@ -1,5 +1,4 @@
-// Copyright AudioKit. All Rights Reserved. Revision History at
-// http://github.com/AudioKit/AudioKit/
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
 
 #import <CoreAudio/CoreAudioTypes.h>
 #import <atomic>
