@@ -5,6 +5,7 @@
 #ifndef FaderDSP_h
 #define FaderDSP_h
 
+#import "DSPBase.h"
 #import <AudioToolbox/AUParameters.h>
 #import <Foundation/Foundation.h>
 
@@ -23,5 +24,21 @@ typedef NS_CLOSED_ENUM(AUParameterAddress, FaderParameter) {
     FaderParameterMidSideWidth,
     FaderParameterMidSideEncode
 };
+
+/// Every channel parameter at once, so a render never sees half an operation.
+typedef struct {
+    bool flipStereo;
+    bool mixToMono;
+    uint8_t monoSource; // 0 average, 1 left, 2 right
+    bool midSideDecode;
+    bool midSideEncode;
+    float midSideWidth;
+} FaderChannelState;
+
+CF_EXTERN_C_BEGIN
+
+void setChannelStateFaderDSP(DSPRef pDSP, FaderChannelState state);
+
+CF_EXTERN_C_END
 
 #endif // !FaderDSP_h

@@ -147,6 +147,20 @@ final class FaderRenderTests: TestCaseModel {
         #expect(output[1] == written[1].map { $0 * rightGain })
     }
 
+    @Test func channelOperationChangedWhileRunningRendersWhole() async throws {
+        let input = try makeNoise(frames: 4096)
+
+        let output = try await render(
+            input,
+            configure: { $0.channelOperation = .midSideDecode(width: 0.37) },
+            started: { $0.channelOperation = .mono(.left) }
+        )
+
+        let written = try channels(input.applyingChannelOperation(.mono(.left)))
+        #expect(output[0] == written[0])
+        #expect(output[1] == written[0])
+    }
+
     // MARK: - Automation timing
 
     private func automate(_ events: [AutomationEvent]) -> (Fader) throws -> Void {

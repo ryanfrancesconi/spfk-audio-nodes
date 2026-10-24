@@ -2,6 +2,7 @@
 
 import AVFoundation
 import SPFKAudioBase
+import SPFKAudioNodesC
 
 extension Fader {
     /// The channel parameters as one operation. A mono operation plays the same signal on both
@@ -21,35 +22,47 @@ extension Fader {
             return .none
         }
         set {
-            var mono = false
-            var decode = false
-            var encode = false
-            var swap = false
+            var state = FaderChannelState(
+                flipStereo: false,
+                mixToMono: false,
+                monoSource: UInt8(monoSource.rounded()),
+                midSideDecode: false,
+                midSideEncode: false,
+                midSideWidth: midSideWidth
+            )
 
             switch newValue {
             case .none:
                 break
             case .swap:
-                swap = true
+                state.flipStereo = true
             case let .mono(source):
-                mono = true
-                monoSource = switch source {
+                state.mixToMono = true
+                state.monoSource = switch source {
                 case .average: 0
                 case .left: 1
                 case .right: 2
                 }
             case let .midSideDecode(width):
-                decode = true
+                state.midSideDecode = true
                 let range = ChannelOperation.widthRange
-                midSideWidth = min(max(width, range.lowerBound), range.upperBound)
+                state.midSideWidth = min(max(width, range.lowerBound), range.upperBound)
             case .midSideEncode:
-                encode = true
+                state.midSideEncode = true
             }
 
-            mixToMono = mono
-            midSideDecode = decode
-            midSideEncode = encode
-            flipStereo = swap
+            // One store, so a render never plays half an operation. The parameter writes after it
+            // keep the AU's parameter tree current; each lands a value the DSP already holds.
+            if let dsp = (avAudioNode.auAudioUnit as? SPFKAudioUnit)?.dsp {
+                setChannelStateFaderDSP(dsp, state)
+            }
+
+            mixToMono = state.mixToMono
+            monoSource = AUValue(state.monoSource)
+            midSideDecode = state.midSideDecode
+            midSideWidth = state.midSideWidth
+            midSideEncode = state.midSideEncode
+            flipStereo = state.flipStereo
         }
     }
 }

@@ -13,12 +13,12 @@ struct FaderDSP : DSPBase {
   private:
     ParameterRamper leftGainRamp{1.0};
     ParameterRamper rightGainRamp{1.0};
-    bool flipStereo = false;
-    bool mixToMono = false;
-    int monoSource = 0; // 0 average, 1 left, 2 right
-    bool midSideDecode = false;
-    float midSideWidth = 1.f;
-    bool midSideEncode = false;
+
+    /// A packed FaderChannelState: written from any thread, read once per `process`.
+    std::atomic<uint64_t> channelState;
+
+    static uint64_t pack(FaderChannelState state);
+    static FaderChannelState unpack(uint64_t bits);
 
     void setChannelParameter(AUParameterAddress address, AUValue value);
 
@@ -28,6 +28,8 @@ struct FaderDSP : DSPBase {
 
   public:
     FaderDSP();
+
+    void setChannelState(FaderChannelState state) { channelState.store(pack(state)); }
 
     void setParameter(AUParameterAddress address, AUValue value, bool immediate) override;
     float getParameter(AUParameterAddress address) override;
