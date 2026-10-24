@@ -24,6 +24,7 @@ struct AutomationSnapshot {
     std::vector<AutomationLane> lanes;
     SPFKTimelineMapping mapping;
     DSPAutomationAnchor anchor;
+    bool glides;
 };
 
 /// Hands automation snapshots to the render thread and evaluates them there, per frame, into a
@@ -94,9 +95,13 @@ class AutomationScheduler {
     std::atomic<int64_t> clockSample{0};
     std::atomic<uint64_t> clockHost{0};
     std::atomic<double> clockRateScalar{1};
+    std::atomic<uint32_t> clockFrames{0};
+    std::atomic<int64_t> clockAhead{0};
+    int64_t aheadWindow[8] = {};
+    uint32_t aheadIndex = 0;
     std::atomic<int64_t> clockAnchor{0};
     std::atomic<bool> clockHasAnchor{false};
-    void publishClock(const AudioTimeStamp *timestamp);
+    void publishClock(const AudioTimeStamp *timestamp, AUAudioFrameCount frameCount);
 
     // Render thread: the parameter's own value is rendering instead of its replacing curve.
     bool manualWins[maxParameters];

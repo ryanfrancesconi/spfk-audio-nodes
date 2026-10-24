@@ -10,6 +10,10 @@ import SPFKBase
 
 extension StreamPlayer {
     public func play() throws {
+        try play(at: nil)
+    }
+
+    public func play(at startTime: AVAudioTime?) throws {
         guard playerNode.engine?.isRunning == true else {
             throw NSError(description: "StreamPlayer.play() Engine isn't running or available - play() canceled for \(url?.lastPathComponent ?? "nil")")
         }
@@ -18,9 +22,10 @@ extension StreamPlayer {
             playerNode.stop()
         }
 
-        // nil means play immediately; the run's start time was given to the first buffer.
-        playerNode.play(at: nil)
+        // nil means play immediately, at the time the run gave its first buffer
+        playerNode.play(at: startTime)
 
+        if let startTime { lastScheduledTime = startTime }
         isPlaybackArmed = true
     }
 

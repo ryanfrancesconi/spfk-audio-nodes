@@ -107,6 +107,26 @@ final class AutomationSchedulerRenderTests: TestCaseModel {
         #expect(abs(output[0][output[0].count - 1] - 0.8) < 1e-6)
     }
 
+    /// A start published just after a stop opens on its curve, not on the stop's glide back to the
+    /// parameter's own value.
+    @Test func aStartAfterAStopOpensOnItsCurve() async throws {
+        let stopAt = 24576
+        let mapping = try TimelineMapping(renderAnchor: .atAdoption, sourceAnchor: 0, renderSampleRate: rate)
+        let curves = try Dictionary(uniqueKeysWithValues: GainRenderHarness.gainAddresses.map { ($0, try ParameterCurve(constant: 0.25)) })
+
+        let output = try await GainRenderHarness.render(
+            GainRenderHarness.makeDC(seconds: 1), blockSize: 512,
+            started: { $0.automation.publish(curves, mapping: mapping, combine: .multiply) },
+            beforeBlock: { rendered, channelGain in
+                if rendered == stopAt { channelGain.automation.stop() }
+                if rendered == stopAt + 512 { channelGain.automation.publish(curves, mapping: mapping, combine: .multiply, glides: false) }
+            }
+        )
+
+        let opened = Array(output[0][(stopAt + 512)...])
+        #expect(opened.allSatisfy { abs($0 - 0.25) < 1e-6 }, "opens at \(opened[0]), reaches \(opened.max() ?? 0)")
+    }
+
     /// Publishes faster than the render thread adopts them: the last one wins, the rest are freed.
     @Test func manyPublishesBetweenBlocksAdoptTheLast() async throws {
         let output = try await GainRenderHarness.render(

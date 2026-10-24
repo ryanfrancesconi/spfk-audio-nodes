@@ -157,6 +157,9 @@ class ParameterRamper {
         samplesRemaining = glideFrames;
     }
 
+    /// Ends any ramp under way, at its goal.
+    void settle() { samplesRemaining = 0; }
+
     bool isAutomated() const { return automation != nullptr; }
 
     /// The value of the last frame rendered or stepped over.

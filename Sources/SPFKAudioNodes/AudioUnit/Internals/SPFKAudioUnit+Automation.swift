@@ -12,7 +12,8 @@ extension SPFKAudioUnit {
         _ curves: [AUParameterAddress: ParameterCurve],
         mapping: TimelineMapping,
         combine: AutomationCombine,
-        mode: AutomationMode
+        mode: AutomationMode,
+        glides: Bool
     ) {
         let entries = curves.sorted { $0.key < $1.key }
         var flat: [SPFKCurveSegment] = []
@@ -53,7 +54,7 @@ extension SPFKAudioUnit {
             }
 
             lanes.withUnsafeBufferPointer { lanes in
-                publishAutomationDSP(dsp, lanes.baseAddress, lanes.count, renderMapping, anchor)
+                publishAutomationDSP(dsp, lanes.baseAddress, lanes.count, renderMapping, anchor, glides)
             }
         }
     }
@@ -64,7 +65,7 @@ extension SPFKAudioUnit {
             renderAnchor: 0, sourceAnchor: 0, rate: 1, direction: 1, loopStart: 0, loopEnd: 0, renderSampleRate: 1
         )
         let anchor = DSPAutomationAnchor(kind: .atAdoption, sampleTime: 0, hostTime: 0)
-        publishAutomationDSP(dsp, nil, 0, mapping, anchor)
+        publishAutomationDSP(dsp, nil, 0, mapping, anchor, true)
     }
 
     func renderClock() -> DSPRenderClock {

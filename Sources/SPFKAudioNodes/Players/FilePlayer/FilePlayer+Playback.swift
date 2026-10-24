@@ -1,5 +1,6 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
 
+import AVFoundation
 import Foundation
 import SPFKBase
 
@@ -12,13 +13,18 @@ extension FilePlayer {
     /// run supersedes the previous one in ``schedule(from:to:audioTime:onComplete:)`` instead,
     /// before its own segment is queued.
     public func play() throws {
+        try play(at: nil)
+    }
+
+    public func play(at startTime: AVAudioTime?) throws {
         guard playerNode.engine?.isRunning == true else {
             throw NSError(description: "FilePlayer.play() Engine isn't running or available - play() canceled for \(audioFile?.url.lastPathComponent ?? "nil")")
         }
 
-        // nil means play immediately; the segment's start time was set in scheduleSegment
-        playerNode.play(at: nil)
+        // nil means play immediately, at the time the segment was scheduled for
+        playerNode.play(at: startTime)
 
+        if let startTime { lastScheduledTime = startTime }
         isPlaybackArmed = true
     }
 

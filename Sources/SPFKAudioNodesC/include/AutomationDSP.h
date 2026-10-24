@@ -54,16 +54,22 @@ typedef struct DSPRenderClock {
     uint64_t hostTime;
     double rateScalar;
     double sampleRate;
+    /// The last block's length, which in real time is the device's I/O buffer.
+    uint32_t frameCount;
+    /// How far the last block's host time was ahead of the host clock when it rendered, in host
+    /// ticks: how early rendering runs. The largest of the recent blocks.
+    int64_t renderAheadTicks;
     bool hasAnchor;
     int64_t anchorSample;
 } DSPRenderClock;
 
 CF_EXTERN_C_BEGIN
 
-/// Replaces the node's whole automation with `lanes` against `mapping`; no lanes stops it. Copies
-/// everything it is given. Call from one thread only.
+/// Replaces the node's whole automation with `lanes` against `mapping`; no lanes stops it. With
+/// `glides`, a parameter already automated glides from its running value over 20 ms; without, it
+/// starts on its curve. Copies everything it is given. Call from one thread only.
 void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long laneCount, SPFKTimelineMapping mapping,
-                          DSPAutomationAnchor anchor);
+                          DSPAutomationAnchor anchor, bool glides);
 
 /// Frees snapshots the render thread has finished with. Call from the publishing thread.
 void drainRetiredAutomationDSP(DSPRef pDSP);

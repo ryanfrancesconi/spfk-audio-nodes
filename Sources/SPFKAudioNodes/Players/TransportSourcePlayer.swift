@@ -93,6 +93,13 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
 
     func play() throws
 
+    /// Starts the scheduled run at `startTime`, a node time; nil starts it now.
+    ///
+    /// A run scheduled at player sample 0 then started here begins exactly on `startTime` —
+    /// measured to the frame, in real time with a sample or a host time and offline with a sample.
+    /// A time already past starts it at once, dropping what it should have played.
+    func play(at startTime: AVAudioTime?) throws
+
     func stop()
 
     /// Releases what is loaded and everything reading it.

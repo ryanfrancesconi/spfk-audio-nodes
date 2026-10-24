@@ -51,15 +51,21 @@ public final class NodeAutomation {
     }
 
     /// Replaces the node's automation with `curves` against `mapping`.
+    ///
+    /// A parameter already automated glides from its running value to the new curve over 20 ms, so
+    /// an edit while playing cannot click. Pass `glides: false` for a new start — a play or a seek —
+    /// which should open on its curve: a stop and a play published before one block render as a
+    /// replacement, not as a stop.
     public func publish(
         _ curves: [AUParameterAddress: ParameterCurve],
         mapping: TimelineMapping,
         combine: AutomationCombine = .replace,
-        mode: AutomationMode = .read
+        mode: AutomationMode = .read,
+        glides: Bool = true
     ) {
         guard !curves.isEmpty else { return stop() }
 
-        unit.publishAutomation(curves, mapping: mapping, combine: combine, mode: mode)
+        unit.publishAutomation(curves, mapping: mapping, combine: combine, mode: mode, glides: glides)
         self.curves = curves
         self.mapping = mapping
     }
@@ -87,6 +93,22 @@ public final class NodeAutomation {
         let ticks = hostTime >= clock.hostTime ? Double(hostTime - clock.hostTime) : -Double(clock.hostTime - hostTime)
         let frames = ticks * Self.secondsPerHostTick * clock.sampleRate / clock.rateScalar
         return clock.sampleTime + Int64(frames.rounded())
+    }
+
+    /// The length of the last rendered block in seconds, which in real time is the device's I/O
+    /// buffer; nil before a block has rendered.
+    public var renderBlockDuration: TimeInterval? {
+        let clock = unit.renderClock()
+        guard clock.frameCount > 0, clock.sampleRate > 0 else { return nil }
+        return Double(clock.frameCount) / clock.sampleRate
+    }
+
+    /// How far ahead of the host clock the node renders, in seconds — a block's host time minus the
+    /// time it rendered, the largest of the last eight blocks; nil before a block has rendered.
+    public var renderAheadDuration: TimeInterval? {
+        let clock = unit.renderClock()
+        guard clock.valid else { return nil }
+        return Double(clock.renderAheadTicks) * Self.secondsPerHostTick
     }
 
     /// The source position the running automation's mapping gives `hostTime`, nil when nothing runs.

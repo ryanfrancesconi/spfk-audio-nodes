@@ -12,8 +12,8 @@
 // MARK: - C entry points
 
 void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long laneCount, SPFKTimelineMapping mapping,
-                          DSPAutomationAnchor anchor) {
-    auto snapshot = new AutomationSnapshot{{}, mapping, anchor};
+                          DSPAutomationAnchor anchor, bool glides) {
+    auto snapshot = new AutomationSnapshot{{}, mapping, anchor, glides};
     snapshot->lanes.reserve(laneCount);
 
     for (long i = 0; i < laneCount; ++i) {
@@ -113,7 +113,7 @@ void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFra
                                      ParameterRamper *const *rampers) {
     if (maximumFrames == 0) return;
 
-    publishClock(timestamp);
+    publishClock(timestamp, frameCount);
 
     uint32_t head = retiredHead.load(std::memory_order_relaxed);
     bool canRetire = head - retiredTail.load(std::memory_order_acquire) < retireCapacity;
@@ -223,7 +223,11 @@ void AutomationScheduler::adopt(AutomationSnapshot *snapshot, const AudioTimeSta
 
         if (laneOf[parameter] >= 0) {
             // Replacing running automation glides from where it was; a first snapshot starts on its curve.
-            glidePending[parameter] = wasAutomated && hasRendered[parameter] && glideFrames > 0;
+            glidePending[parameter] = current->glides && wasAutomated && hasRendered[parameter] && glideFrames > 0;
+
+            // A start opens on its curve, so the parameter's own value cannot still be returning
+            // from a stop: that glide would scale a multiplying curve.
+            if (!current->glides) rampers[parameter]->settle();
             glideFrom[parameter] = lastAutomated[parameter];
             glideRemaining[parameter] = 0;
             cursor[parameter] = -2;
@@ -265,15 +269,21 @@ int64_t AutomationScheduler::bindAnchor(const DSPAutomationAnchor &anchor, const
     return blockStart;
 }
 
-void AutomationScheduler::publishClock(const AudioTimeStamp *timestamp) {
+void AutomationScheduler::publishClock(const AudioTimeStamp *timestamp, AUAudioFrameCount frameCount) {
     bool hostValid = timestamp->mFlags & kAudioTimeStampHostTimeValid;
     bool rateValid = (timestamp->mFlags & kAudioTimeStampRateScalarValid) && timestamp->mRateScalar > 0;
+
+    int64_t ahead = hostValid ? int64_t(timestamp->mHostTime) - int64_t(mach_absolute_time()) : 0;
+    aheadWindow[aheadIndex++ % 8] = ahead;
+    int64_t largestAhead = *std::max_element(aheadWindow, aheadWindow + 8);
 
     uint32_t sequence = clockSequence.load(std::memory_order_relaxed);
     clockSequence.store(sequence + 1, std::memory_order_release);
     clockSample.store(int64_t(timestamp->mSampleTime), std::memory_order_relaxed);
+    clockAhead.store(largestAhead, std::memory_order_relaxed);
     clockHost.store(hostValid ? timestamp->mHostTime : 0, std::memory_order_relaxed);
     clockRateScalar.store(rateValid ? timestamp->mRateScalar : 1.0, std::memory_order_relaxed);
+    clockFrames.store(frameCount, std::memory_order_relaxed);
     clockSequence.store(sequence + 2, std::memory_order_release);
 }
 
@@ -286,6 +296,8 @@ DSPRenderClock AutomationScheduler::renderClock() const {
         clock.sampleTime = clockSample.load(std::memory_order_relaxed);
         clock.hostTime = clockHost.load(std::memory_order_relaxed);
         clock.rateScalar = clockRateScalar.load(std::memory_order_relaxed);
+        clock.frameCount = clockFrames.load(std::memory_order_relaxed);
+        clock.renderAheadTicks = clockAhead.load(std::memory_order_relaxed);
         clock.anchorSample = clockAnchor.load(std::memory_order_relaxed);
         clock.hasAnchor = clockHasAnchor.load(std::memory_order_relaxed);
         std::atomic_thread_fence(std::memory_order_acquire);
