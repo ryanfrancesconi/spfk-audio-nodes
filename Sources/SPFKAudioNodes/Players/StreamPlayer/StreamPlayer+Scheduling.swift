@@ -80,8 +80,10 @@ extension StreamPlayer {
 
         lastScheduledTime = audioTime
 
+        // Each bound on the frame grid, as FilePlayer places them, so a pass is the same frames in
+        // both and a host can reckon positions from the bounds.
         let startFrame = AVAudioFramePosition(playbackRange.lowerBound * sampleRate)
-        let rangeFrames = AVAudioFramePosition(playbackRange.duration * sampleRate)
+        let rangeFrames = AVAudioFramePosition(playbackRange.upperBound * sampleRate) - startFrame
 
         guard rangeFrames > 0 else {
             throw NSError(file: #file, function: #function, description: "Unable to schedule. Range is \(rangeFrames) frames")
@@ -180,7 +182,7 @@ extension StreamPlayer {
             guard state.generation == run.generation else { return false }
 
             state.repeatStartFrame = AVAudioFramePosition(start * sampleRate)
-            state.repeatRangeFrames = AVAudioFramePosition((end - start) * sampleRate)
+            state.repeatRangeFrames = AVAudioFramePosition(end * sampleRate) - AVAudioFramePosition(start * sampleRate)
             state.pendingRepeats += 1
 
             guard state.isFeeding == false else { return false }
