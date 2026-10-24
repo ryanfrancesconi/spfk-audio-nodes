@@ -61,4 +61,42 @@ final class NodeAutomationTests: TestCaseModel {
         #expect(gain == maximum)
         #expect(abs(output[0][output[0].count - 1] - maximum) < 1e-6)
     }
+    /// In real time, a host time maps to the render sample AVFoundation pairs it with, and to the
+    /// source position the running mapping gives that sample.
+    @Test func hostTimesMapThroughTheRunningMapping() async throws {
+        let engine = AVAudioEngine()
+        let channelGain = try await ChannelGain()
+        let format = engine.mainMixerNode.outputFormat(forBus: 0)
+
+        // A source, or the gain's input pull fails and it never renders.
+        let source = AVAudioPlayerNode()
+        engine.attach(source)
+        engine.attach(channelGain.avAudioNode)
+        engine.connect(source, to: channelGain.avAudioNode, format: format)
+        engine.connect(channelGain.avAudioNode, to: engine.mainMixerNode, format: format)
+        engine.mainMixerNode.outputVolume = 0
+        try engine.start()
+        defer { engine.stop() }
+
+        let automation = channelGain.automation
+        try await wait(for: automation.renderSample(atHostTime: mach_absolute_time()) != nil, timeout: 2)
+
+        let lastRender = try #require(channelGain.avAudioNode.lastRenderTime)
+        let paired = try #require(automation.renderSample(atHostTime: lastRender.hostTime))
+        reportMeasure("host pairing", "AVFoundation \(lastRender.sampleTime), clock \(paired)")
+        #expect(abs(paired - lastRender.sampleTime) <= 1, "pairs host time with \(paired), AVFoundation with \(lastRender.sampleTime)")
+
+        let mapping = try TimelineMapping(
+            renderAnchor: .sample(lastRender.sampleTime), sourceAnchor: 10, rate: 2, renderSampleRate: format.sampleRate
+        )
+        automation.publish([ChannelGainParameter.leftGain.rawValue: try ParameterCurve(constant: 1)], mapping: mapping)
+
+        let host = mach_absolute_time() + AVAudioTime.hostTime(forSeconds: 0.5)
+        try await wait(for: automation.sourcePosition(atHostTime: host) != nil, timeout: 2)
+
+        let first = try #require(automation.sourcePosition(atHostTime: host))
+        let second = try #require(automation.sourcePosition(atHostTime: host + AVAudioTime.hostTime(forSeconds: 0.25)))
+        reportMeasure("host positions", "\(first), then \(second) a quarter second later")
+        #expect(abs((second - first) - 0.5) < 0.001, "advances \(second - first) source seconds in 0.25 s at rate 2")
+    }
 }

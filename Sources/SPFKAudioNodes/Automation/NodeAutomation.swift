@@ -76,6 +76,33 @@ public final class NodeAutomation {
         unit.renderedValue(of: address)
     }
 
+    // MARK: - Host time
+
+    /// The render sample `hostTime` falls on, from the last block's timestamp; nil before a block
+    /// has rendered, or offline, where there is no host clock.
+    public func renderSample(atHostTime hostTime: UInt64) -> Int64? {
+        let clock = unit.renderClock()
+        guard clock.valid else { return nil }
+
+        let ticks = hostTime >= clock.hostTime ? Double(hostTime - clock.hostTime) : -Double(clock.hostTime - hostTime)
+        let frames = ticks * Self.secondsPerHostTick * clock.sampleRate / clock.rateScalar
+        return clock.sampleTime + Int64(frames.rounded())
+    }
+
+    /// The source position the running automation's mapping gives `hostTime`, nil when nothing runs.
+    public func sourcePosition(atHostTime hostTime: UInt64) -> Double? {
+        let clock = unit.renderClock()
+        guard let mapping, clock.hasAnchor, let sample = renderSample(atHostTime: hostTime) else { return nil }
+
+        return mapping.position(atRenderSample: sample, anchorSample: clock.anchorSample)
+    }
+
+    private static let secondsPerHostTick: Double = {
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        return Double(timebase.numer) / Double(timebase.denom) * 1e-9
+    }()
+
     // MARK: - Ramps
 
     /// Ramps `parameters` from where they rendered last to `target`, starting `delay` seconds after

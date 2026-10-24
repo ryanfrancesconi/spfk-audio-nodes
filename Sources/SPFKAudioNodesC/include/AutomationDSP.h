@@ -46,6 +46,18 @@ typedef struct DSPAutomationLane {
     long segmentCount;
 } DSPAutomationLane;
 
+/// The last rendered block's start on the render timeline and the host clock, and where the running
+/// automation's mapping is anchored. `valid` is false before a block has rendered.
+typedef struct DSPRenderClock {
+    bool valid;
+    int64_t sampleTime;
+    uint64_t hostTime;
+    double rateScalar;
+    double sampleRate;
+    bool hasAnchor;
+    int64_t anchorSample;
+} DSPRenderClock;
+
 CF_EXTERN_C_BEGIN
 
 /// Replaces the node's whole automation with `lanes` against `mapping`; no lanes stops it. Copies
@@ -58,6 +70,9 @@ void drainRetiredAutomationDSP(DSPRef pDSP);
 
 /// The value the parameter rendered on the last frame of the last block.
 AUValue renderedValueDSP(DSPRef pDSP, AUParameterAddress address);
+
+/// The render clock as of the last block. From any thread.
+DSPRenderClock renderClockDSP(DSPRef pDSP);
 
 /// Whether the parameter is held by a touch gesture. From any thread.
 void setParameterTouchedDSP(DSPRef pDSP, AUParameterAddress address, bool touched);

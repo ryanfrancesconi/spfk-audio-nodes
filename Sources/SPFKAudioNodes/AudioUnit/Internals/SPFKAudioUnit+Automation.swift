@@ -67,6 +67,10 @@ extension SPFKAudioUnit {
         publishAutomationDSP(dsp, nil, 0, mapping, anchor)
     }
 
+    func renderClock() -> DSPRenderClock {
+        renderClockDSP(dsp)
+    }
+
     func setTouched(_ address: AUParameterAddress, _ touched: Bool) {
         setParameterTouchedDSP(dsp, address, touched)
     }

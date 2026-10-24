@@ -53,6 +53,7 @@ class AutomationScheduler {
     void drainRetired();
     float renderedValue(AUParameterAddress address) const;
     void setTouched(AUParameterAddress address, bool touched);
+    DSPRenderClock renderClock() const;
 
     // MARK: Render thread
 
@@ -87,6 +88,15 @@ class AutomationScheduler {
     uint32_t glideRemaining[maxParameters];
     std::atomic<float> rendered[maxParameters];
     std::atomic<bool> touched[maxParameters];
+
+    // The render clock, published by the render thread under a sequence count: odd while writing.
+    std::atomic<uint32_t> clockSequence{0};
+    std::atomic<int64_t> clockSample{0};
+    std::atomic<uint64_t> clockHost{0};
+    std::atomic<double> clockRateScalar{1};
+    std::atomic<int64_t> clockAnchor{0};
+    std::atomic<bool> clockHasAnchor{false};
+    void publishClock(const AudioTimeStamp *timestamp);
 
     // Render thread: the parameter's own value is rendering instead of its replacing curve.
     bool manualWins[maxParameters];

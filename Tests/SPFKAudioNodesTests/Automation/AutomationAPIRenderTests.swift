@@ -100,63 +100,91 @@ final class AutomationAPIRenderTests: TestCaseModel {
 
     // MARK: - Recording
 
-    /// Values written between `beginTouch` and `endTouch` reach the recording callback in order,
-    /// each with the time it was written.
-    @MainActor
-    @Test(.disabled(Self.recordingTraps))
-    func recordingDeliversWritesInOrderWithTheirTimes() async throws {
+    /// Values written between `beginTouch` and `endTouch` are recorded in order, each with the time
+    /// it was written.
+    @Test func recordingDeliversWritesInOrderWithTheirTimes() async throws {
         let channelGain = try await ChannelGain()
         let parameter = channelGain.$leftGain
         let written: [AUValue] = [0.1, 0.3, 0.5, 0.7, 0.9, 0.6, 0.4, 0.2]
-        var received: [AUParameterAutomationEvent] = []
+        let recorder = try AutomationRecorder(parameter)
 
-        parameter.recordAutomation { received.append($0) }
+        recorder.start()
         parameter.beginTouch(value: 0.05)
         for value in written {
             channelGain.leftGain = value
-            try await wait(sec: 0.02)
+            try await wait(sec: 0.01)
         }
         parameter.endTouch(value: 0.15)
-        try await wait(for: received.count >= written.count + 2, timeout: 2)
+        try await wait(for: recorder.recorded.count >= written.count + 2, timeout: 2)
+        recorder.stop()
 
+        let received = recorder.recorded
         let values = received.map(\.value)
         let hostTimes = received.map(\.hostTime)
-        let kinds = received.map(\.eventType.rawValue)
-        reportMeasure("recording", "\(received.count) events, values \(values), kinds \(kinds), host times \(hostTimes)")
+        reportMeasure("recording", "\(received.count) events, values \(values), host times \(hostTimes)")
 
         #expect(values == [0.05] + written + [0.15], "received \(values)")
-
+        #expect(received.first?.eventType == .touch)
+        #expect(received.last?.eventType == .release)
         #expect(hostTimes.allSatisfy { $0 != 0 }, "host times \(hostTimes)")
         #expect(zip(hostTimes, hostTimes.dropFirst()).allSatisfy { $0 <= $1 }, "host times out of order")
     }
 
-    /// Measured 2026-10-24 against `spfk-audio-nodes` 4523986: the observer closure inherits the
-    /// method's `@MainActor` isolation, AudioToolbox calls it from a dispatch worker, and the runtime's
-    /// isolation check traps on the first event.
-    static let recordingTraps: Comment = "recordAutomation traps on its first event, which arrives off the main actor"
-
-    /// A second `recordAutomation` replaces the first rather than leaving it running.
-    @MainActor
-    @Test(.disabled(Self.recordingTraps))
-    func recordingTwiceReplacesTheFirstObserver() async throws {
+    /// A second `start` replaces the first recording, and `stop` ends it.
+    @Test func recordingTwiceReplacesTheFirst() async throws {
         let channelGain = try await ChannelGain()
-        let parameter = channelGain.$leftGain
-        var first = 0, second = 0
+        let recorder = try AutomationRecorder(channelGain.$leftGain)
 
-        parameter.recordAutomation { _ in first += 1 }
-        parameter.recordAutomation { _ in second += 1 }
+        recorder.start()
         channelGain.leftGain = 0.4
-        try await wait(for: second > 0, timeout: 2)
-        try await wait(sec: 0.1)
+        try await wait(for: recorder.recorded.count == 1, timeout: 2)
 
-        parameter.stopRecording()
+        recorder.start()
         channelGain.leftGain = 0.6
+        try await wait(for: recorder.recorded.count == 1 && recorder.recorded.first?.value == 0.6, timeout: 2)
         try await wait(sec: 0.1)
+        #expect(recorder.recorded.map(\.value) == [0.6], "one observer, the second recording")
 
-        reportMeasure("record twice", "first observer fired \(first) times, second \(second)")
+        recorder.stop()
+        channelGain.leftGain = 0.8
+        try await wait(sec: 0.1)
+        #expect(recorder.recorded.map(\.value) == [0.6], "stopped")
+        #expect(!recorder.isRecording)
+    }
 
-        #expect(first == 0, "the replaced observer fired \(first) times")
-        #expect(second == 1, "the live observer fired \(second) times")
+    /// A recording merged into a curve plays back where it was written, and the curve around it is
+    /// unchanged.
+    @Test func mergedRecordingPlaysWhereItWasWritten() async throws {
+        let channelGain = try await ChannelGain()
+        let recorder = try AutomationRecorder(channelGain.$leftGain)
+        let written: [AUValue] = [0.2, 0.6, 0.4]
+
+        recorder.start()
+        for value in written {
+            channelGain.leftGain = value
+            try await wait(sec: 0.02)
+        }
+        try await wait(for: recorder.recorded.count == written.count, timeout: 2)
+        recorder.stop()
+
+        // Each write at source position 0.25, 0.5, 0.75 in the order written.
+        let positions = Dictionary(uniqueKeysWithValues: recorder.recorded.enumerated().map { ($1.hostTime, 0.25 * Double($0 + 1)) })
+        let base = try ParameterCurve([CurveSegment(start: 0, end: 1, startValue: 1, endValue: 0)])
+        let curve = try recorder.merged(into: base) { positions[$0] }
+
+        #expect(abs(curve.value(at: 0.1) - base.value(at: 0.1)) < 1e-6)
+        #expect(curve.value(at: 0.25) == 0.2)
+        #expect(abs(curve.value(at: 0.375) - 0.4) < 1e-6)
+        #expect(curve.value(at: 0.5) == 0.6)
+        // The span replaced is half-open: the recording ramps to its last value, and the curve it
+        // replaced resumes on that frame.
+        #expect(abs(curve.value(at: 0.74) - 0.408) < 1e-6)
+        #expect(curve.value(at: 0.75) == base.value(at: 0.75))
+        #expect(abs(curve.value(at: 0.9) - base.value(at: 0.9)) < 1e-6)
+
+        #expect(throws: AutomationRecorder.MergeError.unmapped) { try recorder.merged(into: base) { _ in nil } }
+        let reversing = Dictionary(uniqueKeysWithValues: recorder.recorded.enumerated().map { ($1.hostTime, [0.5, 0.9, 0.1][$0]) })
+        #expect(throws: AutomationRecorder.MergeError.notMonotonic) { try recorder.merged(into: base) { reversing[$0] } }
     }
 
     /// What AudioToolbox itself delivers to an automation observer for touch, writes and release:

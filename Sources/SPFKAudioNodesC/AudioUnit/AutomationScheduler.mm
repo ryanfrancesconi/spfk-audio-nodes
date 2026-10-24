@@ -31,6 +31,8 @@ void drainRetiredAutomationDSP(DSPRef pDSP) { pDSP->automation.drainRetired(); }
 
 AUValue renderedValueDSP(DSPRef pDSP, AUParameterAddress address) { return pDSP->automation.renderedValue(address); }
 
+DSPRenderClock renderClockDSP(DSPRef pDSP) { return pDSP->automation.renderClock(); }
+
 void setParameterTouchedDSP(DSPRef pDSP, AUParameterAddress address, bool touched) {
     pDSP->automation.setTouched(address, touched);
 }
@@ -111,6 +113,8 @@ void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFra
                                      ParameterRamper *const *rampers) {
     if (maximumFrames == 0) return;
 
+    publishClock(timestamp);
+
     uint32_t head = retiredHead.load(std::memory_order_relaxed);
     bool canRetire = head - retiredTail.load(std::memory_order_acquire) < retireCapacity;
 
@@ -121,6 +125,16 @@ void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFra
     }
 
     if (current == nullptr) return;
+
+    bool hasAnchor = !current->lanes.empty();
+    if (clockHasAnchor.load(std::memory_order_relaxed) != hasAnchor ||
+        clockAnchor.load(std::memory_order_relaxed) != current->mapping.renderAnchor) {
+        uint32_t sequence = clockSequence.load(std::memory_order_relaxed);
+        clockSequence.store(sequence + 1, std::memory_order_release);
+        clockAnchor.store(current->mapping.renderAnchor, std::memory_order_relaxed);
+        clockHasAnchor.store(hasAnchor, std::memory_order_relaxed);
+        clockSequence.store(sequence + 2, std::memory_order_release);
+    }
 
     AUAudioFrameCount frames = std::min(frameCount, maximumFrames);
     int64_t firstSample = int64_t(timestamp->mSampleTime);
@@ -249,6 +263,38 @@ int64_t AutomationScheduler::bindAnchor(const DSPAutomationAnchor &anchor, const
     }
 
     return blockStart;
+}
+
+void AutomationScheduler::publishClock(const AudioTimeStamp *timestamp) {
+    bool hostValid = timestamp->mFlags & kAudioTimeStampHostTimeValid;
+    bool rateValid = (timestamp->mFlags & kAudioTimeStampRateScalarValid) && timestamp->mRateScalar > 0;
+
+    uint32_t sequence = clockSequence.load(std::memory_order_relaxed);
+    clockSequence.store(sequence + 1, std::memory_order_release);
+    clockSample.store(int64_t(timestamp->mSampleTime), std::memory_order_relaxed);
+    clockHost.store(hostValid ? timestamp->mHostTime : 0, std::memory_order_relaxed);
+    clockRateScalar.store(rateValid ? timestamp->mRateScalar : 1.0, std::memory_order_relaxed);
+    clockSequence.store(sequence + 2, std::memory_order_release);
+}
+
+DSPRenderClock AutomationScheduler::renderClock() const {
+    DSPRenderClock clock{};
+    uint32_t before, after;
+
+    do {
+        before = clockSequence.load(std::memory_order_acquire);
+        clock.sampleTime = clockSample.load(std::memory_order_relaxed);
+        clock.hostTime = clockHost.load(std::memory_order_relaxed);
+        clock.rateScalar = clockRateScalar.load(std::memory_order_relaxed);
+        clock.anchorSample = clockAnchor.load(std::memory_order_relaxed);
+        clock.hasAnchor = clockHasAnchor.load(std::memory_order_relaxed);
+        std::atomic_thread_fence(std::memory_order_acquire);
+        after = clockSequence.load(std::memory_order_relaxed);
+    } while (before != after || (before & 1));
+
+    clock.valid = before > 0 && clock.hostTime != 0;
+    clock.sampleRate = sampleRate;
+    return clock;
 }
 
 bool AutomationScheduler::yieldsToManual(int parameter, const AutomationLane &lane) {
