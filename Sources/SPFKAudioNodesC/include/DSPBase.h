@@ -34,6 +34,8 @@ AUValue getParameterValueDSP(DSPRef pDSP, AUParameterAddress address);
 void setBypassDSP(DSPRef pDSP, bool bypassed);
 bool getBypassDSP(DSPRef pDSP);
 
+double latencySecondsDSP(DSPRef pDSP);
+
 void deleteDSP(DSPRef pDSP);
 
 CF_EXTERN_C_END

@@ -15,6 +15,7 @@ void setBufferDSP(DSPRef pDSP, AudioBufferList *buffer, size_t busIndex) { pDSP-
 void allocateRenderResourcesDSP(DSPRef pDSP, uint32_t channelCount, double sampleRate, uint32_t maximumFrames) {
     pDSP->init(channelCount, sampleRate);
     pDSP->allocateAutomation(maximumFrames);
+    pDSP->setMaximumFramesToRender(maximumFrames);
 }
 
 void deallocateRenderResourcesDSP(DSPRef pDSP) {
@@ -33,6 +34,8 @@ AUValue getParameterValueDSP(DSPRef pDSP, AUParameterAddress address) { return p
 void setBypassDSP(DSPRef pDSP, bool bypass) { pDSP->isBypassed = bypass; }
 
 bool getBypassDSP(DSPRef pDSP) { return pDSP->isBypassed; }
+
+double latencySecondsDSP(DSPRef pDSP) { return pDSP->latencySeconds(); }
 
 void deleteDSP(DSPRef pDSP) { delete pDSP; }
 
@@ -58,42 +61,55 @@ AUInternalRenderBlock DSPBase::internalRenderBlock() {
                               AUAudioFrameCount frameCount, NSInteger outputBusNumber, AudioBufferList *outputData,
                               const AURenderEvent *realtimeEventListHead,
                               AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
-      if (pullInputBlock) {
-          if (bCanProcessInPlace && inputBufferLists.size() == 1) {
-              // pull input directly to output buffer
-              inputBufferLists[0] = outputData;
-              AudioUnitRenderActionFlags inputFlags = 0;
-              AUAudioUnitStatus status = pullInputBlock(&inputFlags, timestamp, frameCount, 0, inputBufferLists[0]);
-
-              if (status != noErr) {
-                  return status;
-              }
-          } else {
-              // pull input to internal buffer
-              for (size_t i = 0; i < inputBufferLists.size(); i++) {
-                  inputBufferLists[i] = internalBufferLists[i];
-
-                  UInt32 byteSize = frameCount * sizeof(float);
-
-                  for (UInt32 ch = 0; ch < inputBufferLists[i]->mNumberBuffers; ch++) {
-                      inputBufferLists[i]->mBuffers[ch].mDataByteSize = byteSize;
-                  }
-
-                  AudioUnitRenderActionFlags inputFlags = 0;
-                  AUAudioUnitStatus status = pullInputBlock(&inputFlags, timestamp, frameCount, i, inputBufferLists[i]);
-
-                  if (status != noErr) {
-                      return status;
-                  }
-              }
-          }
-      }
-
-      outputBufferList = outputData;
-      processWithEvents(timestamp, frameCount, realtimeEventListHead);
-
-      return noErr;
+      return render(actionFlags, timestamp, frameCount, outputData, realtimeEventListHead, pullInputBlock);
     };
+}
+
+AUAudioUnitStatus DSPBase::render(AudioUnitRenderActionFlags *actionFlags, const AudioTimeStamp *timestamp,
+                                  AUAudioFrameCount frameCount, AudioBufferList *outputData,
+                                  const AURenderEvent *realtimeEventListHead,
+                                  AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
+    if (pullInputBlock) {
+        if (bCanProcessInPlace && inputBufferLists.size() == 1) {
+            // pull input directly to output buffer
+            inputBufferLists[0] = outputData;
+            AudioUnitRenderActionFlags inputFlags = 0;
+            AUAudioUnitStatus status = pullInputBlock(&inputFlags, timestamp, frameCount, 0, inputBufferLists[0]);
+
+            if (status != noErr) {
+                return status;
+            }
+        } else {
+            // pull input to internal buffer
+            for (size_t i = 0; i < inputBufferLists.size(); i++) {
+                inputBufferLists[i] = internalBufferLists[i];
+
+                UInt32 byteSize = frameCount * sizeof(float);
+
+                for (UInt32 ch = 0; ch < inputBufferLists[i]->mNumberBuffers; ch++) {
+                    inputBufferLists[i]->mBuffers[ch].mDataByteSize = byteSize;
+                }
+
+                AudioUnitRenderActionFlags inputFlags = 0;
+                AUAudioUnitStatus status = pullInputBlock(&inputFlags, timestamp, frameCount, i, inputBufferLists[i]);
+
+                if (status != noErr) {
+                    return status;
+                }
+            }
+        }
+    }
+
+    outputBufferList = outputData;
+    processWithEvents(timestamp, frameCount, realtimeEventListHead);
+
+    return noErr;
+}
+
+void DSPBase::applyEvents(AURenderEvent const *events) {
+    for (auto event = events; event; event = event->head.next) {
+        handleOneEvent(event);
+    }
 }
 
 void DSPBase::setParameter(AUParameterAddress address, float value, bool immediate) {

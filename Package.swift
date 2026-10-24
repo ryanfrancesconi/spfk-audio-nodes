@@ -16,6 +16,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/ryanfrancesconi/spfk-audio-base", from: "1.6.1"),
         .package(url: "https://github.com/ryanfrancesconi/spfk-au-host", from: "1.2.3"),
+        .package(url: "https://github.com/ryanfrancesconi/spfk-tempo", from: "1.2.5"),
         .package(url: "https://github.com/ryanfrancesconi/spfk-utils", from: "1.6.1"),
         .package(url: "https://github.com/ryanfrancesconi/spfk-testing", from: "1.1.0"),
     ],
@@ -36,6 +37,7 @@ let package = Package(
             name: "SPFKAudioNodesC",
             dependencies: [
                 .product(name: "SPFKAudioBaseC", package: "spfk-audio-base"),
+                .product(name: "SPFKTimePitchKernel", package: "spfk-tempo"),
             ],
             publicHeadersPath: "include",
             cSettings: [
@@ -50,6 +52,7 @@ let package = Package(
             dependencies: [
                 .targetItem(name: "SPFKAudioNodes", condition: nil),
                 .targetItem(name: "SPFKAudioNodesC", condition: nil),
+                .product(name: "SPFKTempo", package: "spfk-tempo"),
                 .product(name: "SPFKTesting", package: "spfk-testing"),
             ],
             swiftSettings: [

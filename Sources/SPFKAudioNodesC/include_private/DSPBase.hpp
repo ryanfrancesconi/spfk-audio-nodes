@@ -1,5 +1,7 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
 
+#pragma once
+
 #import <CoreAudio/CoreAudioTypes.h>
 #import <atomic>
 #import <vector>
@@ -74,7 +76,14 @@ struct DSPBase {
     /// *pointer
     virtual ~DSPBase();
 
+    /// Calls ``render``, which a subclass overrides to change how input is pulled.
     AUInternalRenderBlock internalRenderBlock();
+
+    /// Pulls `frameCount` input frames and processes them with events and automation.
+    virtual AUAudioUnitStatus render(AudioUnitRenderActionFlags *actionFlags, const AudioTimeStamp *timestamp,
+                                     AUAudioFrameCount frameCount, AudioBufferList *outputData,
+                                     const AURenderEvent *events,
+                                     AURenderPullInputBlock __unsafe_unretained pullInputBlock);
 
     const bool bCanProcessInPlace;
 
@@ -111,6 +120,17 @@ struct DSPBase {
     virtual void deinit();
 
     virtual void startRamp(const AUParameterEvent &event);
+
+    /// Called after `init` with the largest block the host will ask for. Allocate per-block storage here.
+    virtual void setMaximumFramesToRender(AUAudioFrameCount maximumFrames) {}
+
+    /// Reported as the AU's `latency`.
+    virtual double latencySeconds() { return 0; }
+
+  protected:
+    /// Handles every event in the list at once, unsegmented, for a DSP that reads its parameters
+    /// per block rather than per frame.
+    void applyEvents(AURenderEvent const *events);
 
   private:
     /**

@@ -99,6 +99,11 @@ open class SPFKAudioUnit: AUAudioUnit {
         canProcessInPlaceDSP(dsp)
     }
 
+    /// What the DSP reports: the time from input to output.
+    override public var latency: TimeInterval {
+        latencySecondsDSP(dsp)
+    }
+
     /// Set in order to bypass processing
     override public var shouldBypassEffect: Bool {
         get { getBypassDSP(dsp) }
