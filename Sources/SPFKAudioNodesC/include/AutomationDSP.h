@@ -26,11 +26,22 @@ typedef struct DSPAutomationAnchor {
     uint64_t hostTime;
 } DSPAutomationAnchor;
 
+/// Who wins a replacing curve's parameter while it is touched. Ignored when the curve multiplies.
+typedef enum __attribute__((enum_extensibility(closed))) DSPAutomationMode : int32_t {
+    /// The curve, always.
+    DSPAutomationModeRead = 0,
+    /// The parameter's own value while touched, gliding back to the curve on release.
+    DSPAutomationModeTouch = 1,
+    /// The parameter's own value from the first touch until the next publish.
+    DSPAutomationModeLatch = 2,
+} DSPAutomationMode;
+
 /// One automated parameter. With `multiplies`, the rendered value is the parameter's own value
-/// times the curve; otherwise the curve replaces it.
+/// times the curve; otherwise the curve replaces it, as `mode` allows.
 typedef struct DSPAutomationLane {
     AUParameterAddress address;
     bool multiplies;
+    DSPAutomationMode mode;
     const SPFKCurveSegment *segments;
     long segmentCount;
 } DSPAutomationLane;
@@ -47,5 +58,8 @@ void drainRetiredAutomationDSP(DSPRef pDSP);
 
 /// The value the parameter rendered on the last frame of the last block.
 AUValue renderedValueDSP(DSPRef pDSP, AUParameterAddress address);
+
+/// Whether the parameter is held by a touch gesture. From any thread.
+void setParameterTouchedDSP(DSPRef pDSP, AUParameterAddress address, bool touched);
 
 CF_EXTERN_C_END

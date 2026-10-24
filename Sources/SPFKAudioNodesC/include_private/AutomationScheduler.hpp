@@ -14,6 +14,7 @@ class ParameterRamper;
 struct AutomationLane {
     AUParameterAddress address;
     bool multiplies;
+    DSPAutomationMode mode;
     std::vector<SPFKCurveSegment> segments;
 };
 
@@ -51,6 +52,7 @@ class AutomationScheduler {
     void publish(AutomationSnapshot *snapshot);
     void drainRetired();
     float renderedValue(AUParameterAddress address) const;
+    void setTouched(AUParameterAddress address, bool touched);
 
     // MARK: Render thread
 
@@ -84,8 +86,14 @@ class AutomationScheduler {
     float glideOffset[maxParameters];
     uint32_t glideRemaining[maxParameters];
     std::atomic<float> rendered[maxParameters];
+    std::atomic<bool> touched[maxParameters];
+
+    // Render thread: the parameter's own value is rendering instead of its replacing curve.
+    bool manualWins[maxParameters];
+    bool latched[maxParameters];
 
     void adopt(AutomationSnapshot *snapshot, const AudioTimeStamp *timestamp, ParameterRamper *const *rampers);
     int64_t bindAnchor(const DSPAutomationAnchor &anchor, const AudioTimeStamp *timestamp) const;
     void applyGlide(int parameter, float *values, AUAudioFrameCount frameCount);
+    bool yieldsToManual(int parameter, const AutomationLane &lane);
 };

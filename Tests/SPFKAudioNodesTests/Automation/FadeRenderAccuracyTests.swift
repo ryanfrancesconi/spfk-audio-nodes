@@ -152,32 +152,31 @@ final class FadeRenderAccuracyTests: TestCaseModel {
         #expect(read.gain == 0.8, "gain reads the manual value")
     }
 
-    /// What a bare gain write does to a running fade. Reference for R7: nothing specifies this today.
-    @Test func gainSetMidRampRendersReference() async throws {
-        let fade = FadeDescription(inTime: 2)
+    /// A gain write during a fade moves the value the fade multiplies, so the fade carries on from
+    /// the new level rather than being interrupted (R7, `.multiply`).
+    @Test func gainSetDuringAFadeScalesIt() async throws {
+        let curve = try FadeDescription(inTime: 2).curve(regionDuration: 4)
         let input = try GainRenderHarness.makeDC(seconds: 2.5)
-        let live = liveFade(fade, regionDuration: 4)
         let setAt = 49152
+        let dezipper = Int(0.02 * rate)
 
         let output = try await GainRenderHarness.render(
             input, blockSize: 512,
-            configure: { $0.gain = live.initialGain },
-            started: { try $0.automate(events: live.events, startTime: GainRenderHarness.renderStart) },
+            started: { try GainRenderHarness.publish(curve, on: $0) },
             beforeBlock: { rendered, channelGain in
                 if rendered == setAt { channelGain.gain = 0.9 }
             }
         )
 
-        let after = Array(output[0][setAt ..< setAt + 1024])
-        let exact = (setAt ..< setAt + 1024).map { exactGain(fade, regionDuration: 4, at: Double($0) / rate) }
-        // The next segment boundary of a 2 s fade at 0.2 s resolution after the write.
-        let resumes = Int(1.2 * rate)
-        reportMeasure(
-            "bare set mid-ramp",
-            String(format: "before %.5f; +480 %.5f; +1023 %.5f (fade %.5f); at next segment (+%d) %.5f, fade %.5f",
-                   output[0][setAt - 1], after[480], after[1023], exact[1023],
-                   resumes - setAt, output[0][resumes + 1], exactGain(fade, regionDuration: 4, at: Double(resumes + 1) / rate))
-        )
+        let fade = { (frame: Int) in curve.value(at: Double(frame) / self.rate) }
+        let before = CurveError(Array(output[0][0 ..< setAt]), (0 ..< setAt).map(fade))
+        let settled = setAt + dezipper ..< output[0].count
+        let after = CurveError(Array(output[0][settled]), settled.map { 0.9 * fade($0) })
+        reportMeasure("set during fade", "before \(before); after \(after)")
+
+        #expect(before.maxAbs <= 1e-6, "before the write: \(before)")
+        #expect(after.maxAbs <= 1e-6, "after the write: \(after)")
+        #expect(Array(output[0][setAt - 1 ..< setAt + dezipper + 1]).largestStep.step < 0.001)
     }
 
     /// `update(normalize:)` mid-fade: the gain set, then the fade re-applied from the playhead with

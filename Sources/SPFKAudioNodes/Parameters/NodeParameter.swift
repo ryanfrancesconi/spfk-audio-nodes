@@ -148,12 +148,13 @@ public class NodeParameter {
     }
 
     /// Sends a .touch event to the parameter automation observer, beginning automation recording if
-    /// enabled in ParameterAutomation.
+    /// enabled in ParameterAutomation, and holds the parameter for a `.touch` or `.latch` curve.
     /// A value may be passed as the initial automation value. The current value is used if none is passed.
     /// - Parameter value: Initial value
     public func beginTouch(value: AUValue? = nil) {
         guard let value = value ?? parameter?.value else { return }
         parameter?.setValue(value, originator: nil, atHostTime: 0, eventType: .touch)
+        (avAudioNode?.auAudioUnit as? SPFKAudioUnit)?.setTouched(def.address, true)
     }
 
     /// Sends a .release event to the parameter observation observer, ending any automation recording.
@@ -162,5 +163,6 @@ public class NodeParameter {
     public func endTouch(value: AUValue? = nil) {
         guard let value = value ?? parameter?.value else { return }
         parameter?.setValue(value, originator: nil, atHostTime: 0, eventType: .release)
+        (avAudioNode?.auAudioUnit as? SPFKAudioUnit)?.setTouched(def.address, false)
     }
 }

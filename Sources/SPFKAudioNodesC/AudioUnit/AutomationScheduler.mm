@@ -20,8 +20,8 @@ void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long lane
         const DSPAutomationLane &lane = lanes[i];
         if (lane.segmentCount <= 0 || lane.segments == nullptr) continue;
 
-        snapshot->lanes.push_back(
-            {lane.address, lane.multiplies, std::vector<SPFKCurveSegment>(lane.segments, lane.segments + lane.segmentCount)});
+        snapshot->lanes.push_back({lane.address, lane.multiplies, lane.mode,
+                                   std::vector<SPFKCurveSegment>(lane.segments, lane.segments + lane.segmentCount)});
     }
 
     pDSP->automation.publish(snapshot);
@@ -30,6 +30,10 @@ void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long lane
 void drainRetiredAutomationDSP(DSPRef pDSP) { pDSP->automation.drainRetired(); }
 
 AUValue renderedValueDSP(DSPRef pDSP, AUParameterAddress address) { return pDSP->automation.renderedValue(address); }
+
+void setParameterTouchedDSP(DSPRef pDSP, AUParameterAddress address, bool touched) {
+    pDSP->automation.setTouched(address, touched);
+}
 
 // MARK: - Lifetime
 
@@ -43,6 +47,9 @@ AutomationScheduler::AutomationScheduler() {
     std::fill(glideOffset, glideOffset + maxParameters, 0.f);
     std::fill(glideRemaining, glideRemaining + maxParameters, 0u);
     for (auto &value : rendered) value.store(0.f);
+    for (auto &value : touched) value.store(false);
+    std::fill(manualWins, manualWins + maxParameters, false);
+    std::fill(latched, latched + maxParameters, false);
 
     mach_timebase_info_data_t timebase;
     mach_timebase_info(&timebase);
@@ -88,6 +95,11 @@ void AutomationScheduler::drainRetired() {
     retiredTail.store(tail, std::memory_order_release);
 }
 
+void AutomationScheduler::setTouched(AUParameterAddress address, bool isTouched) {
+    if (address >= AUParameterAddress(maxParameters)) return;
+    touched[address].store(isTouched, std::memory_order_relaxed);
+}
+
 float AutomationScheduler::renderedValue(AUParameterAddress address) const {
     if (address >= AUParameterAddress(parameterCount)) return 0.f;
     return rendered[address].load(std::memory_order_relaxed);
@@ -123,6 +135,22 @@ void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFra
         spfk_fill_automation(automation.segments.data(), long(automation.segments.size()), &current->mapping,
                              firstSample, frames, &cursor[parameter], values);
 
+        if (yieldsToManual(parameter, automation)) {
+            if (!manualWins[parameter]) {
+                manualWins[parameter] = true;
+                rampers[parameter]->detachAutomation(glideFrames);
+            }
+            continue;
+        }
+
+        if (manualWins[parameter]) {
+            // Back from the parameter's own value to the curve, as a replacement glides.
+            manualWins[parameter] = false;
+            glidePending[parameter] = glideFrames > 0;
+            glideFrom[parameter] = rampers[parameter]->getLastValue();
+            glideRemaining[parameter] = 0;
+        }
+
         applyGlide(parameter, values, frames);
         lastAutomated[parameter] = values[frames - 1];
         hasRendered[parameter] = true;
@@ -139,6 +167,25 @@ void AutomationScheduler::endBlock(ParameterRamper *const *rampers) {
 
 void AutomationScheduler::adopt(AutomationSnapshot *snapshot, const AudioTimeStamp *timestamp,
                                 ParameterRamper *const *rampers) {
+    // What the outgoing automation would render on this frame, which a replacement glides from. Read
+    // before retiring it: once retired, the publishing thread may free it.
+    int64_t firstSample = int64_t(timestamp->mSampleTime);
+
+    for (int parameter = 0; parameter < parameterCount; ++parameter) {
+        int lane = laneOfParameter[parameter];
+        if (lane < 0 || current == nullptr || !hasRendered[parameter]) continue;
+
+        const AutomationLane &outgoing = current->lanes[lane];
+        float value;
+        spfk_fill_automation(outgoing.segments.data(), long(outgoing.segments.size()), &current->mapping, firstSample,
+                             1, &cursor[parameter], &value);
+
+        if (glideRemaining[parameter] > 0) {
+            value += glideOffset[parameter] * float(glideRemaining[parameter]) / float(glideFrames);
+        }
+        lastAutomated[parameter] = value;
+    }
+
     if (current) {
         uint32_t head = retiredHead.load(std::memory_order_relaxed);
         retired[head % retireCapacity] = current;
@@ -158,6 +205,7 @@ void AutomationScheduler::adopt(AutomationSnapshot *snapshot, const AudioTimeSta
 
     for (int parameter = 0; parameter < parameterCount; ++parameter) {
         bool wasAutomated = laneOfParameter[parameter] >= 0;
+        latched[parameter] = false;
 
         if (laneOf[parameter] >= 0) {
             // Replacing running automation glides from where it was; a first snapshot starts on its curve.
@@ -166,7 +214,8 @@ void AutomationScheduler::adopt(AutomationSnapshot *snapshot, const AudioTimeSta
             glideRemaining[parameter] = 0;
             cursor[parameter] = -2;
         } else if (wasAutomated) {
-            rampers[parameter]->detachAutomation(glideFrames);
+            if (!manualWins[parameter]) rampers[parameter]->detachAutomation(glideFrames);
+            manualWins[parameter] = false;
             hasRendered[parameter] = false;
         }
 
@@ -200,6 +249,24 @@ int64_t AutomationScheduler::bindAnchor(const DSPAutomationAnchor &anchor, const
     }
 
     return blockStart;
+}
+
+bool AutomationScheduler::yieldsToManual(int parameter, const AutomationLane &lane) {
+    if (lane.multiplies) return false;
+
+    bool isTouched = touched[parameter].load(std::memory_order_relaxed);
+
+    switch (lane.mode) {
+    case DSPAutomationModeRead:
+        return false;
+    case DSPAutomationModeTouch:
+        return isTouched;
+    case DSPAutomationModeLatch:
+        latched[parameter] = latched[parameter] || isTouched;
+        return latched[parameter];
+    }
+
+    return false;
 }
 
 void AutomationScheduler::applyGlide(int parameter, float *values, AUAudioFrameCount frameCount) {

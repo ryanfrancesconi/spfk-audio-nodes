@@ -15,6 +15,19 @@ public enum AutomationCombine: Sendable {
     case replace
 }
 
+/// Who wins a replacing curve's parameter while ``NodeParameter/beginTouch(value:)`` holds it.
+/// A multiplying curve ignores it, since a write never fights it.
+public enum AutomationMode: Sendable {
+    /// The curve, always.
+    case read
+
+    /// The parameter's own value while touched, gliding back to the curve over 20 ms on release.
+    case touch
+
+    /// The parameter's own value from the first touch until the next publish.
+    case latch
+}
+
 /// A node's automation: every automated parameter, evaluated per frame on the render thread.
 ///
 /// Each publish replaces the node's whole automation, so two curves on one parameter cannot
@@ -41,11 +54,12 @@ public final class NodeAutomation {
     public func publish(
         _ curves: [AUParameterAddress: ParameterCurve],
         mapping: TimelineMapping,
-        combine: AutomationCombine = .replace
+        combine: AutomationCombine = .replace,
+        mode: AutomationMode = .read
     ) {
         guard !curves.isEmpty else { return stop() }
 
-        unit.publishAutomation(curves, mapping: mapping, combine: combine)
+        unit.publishAutomation(curves, mapping: mapping, combine: combine, mode: mode)
         self.curves = curves
         self.mapping = mapping
     }

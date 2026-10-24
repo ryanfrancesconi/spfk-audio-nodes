@@ -11,7 +11,8 @@ extension SPFKAudioUnit {
     func publishAutomation(
         _ curves: [AUParameterAddress: ParameterCurve],
         mapping: TimelineMapping,
-        combine: AutomationCombine
+        combine: AutomationCombine,
+        mode: AutomationMode
     ) {
         let entries = curves.sorted { $0.key < $1.key }
         var flat: [SPFKCurveSegment] = []
@@ -45,6 +46,7 @@ extension SPFKAudioUnit {
                 DSPAutomationLane(
                     address: range.address,
                     multiplies: combine == .multiply,
+                    mode: mode.dspMode,
                     segments: segments.baseAddress.map { $0 + range.offset },
                     segmentCount: range.count
                 )
@@ -65,8 +67,22 @@ extension SPFKAudioUnit {
         publishAutomationDSP(dsp, nil, 0, mapping, anchor)
     }
 
+    func setTouched(_ address: AUParameterAddress, _ touched: Bool) {
+        setParameterTouchedDSP(dsp, address, touched)
+    }
+
     /// The value `address` rendered on the last frame of the last block.
     func renderedValue(of address: AUParameterAddress) -> AUValue {
         renderedValueDSP(dsp, address)
+    }
+}
+
+extension AutomationMode {
+    var dspMode: DSPAutomationMode {
+        switch self {
+        case .read: .read
+        case .touch: .touch
+        case .latch: .latch
+        }
     }
 }
