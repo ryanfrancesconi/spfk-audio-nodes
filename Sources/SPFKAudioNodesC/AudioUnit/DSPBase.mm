@@ -28,13 +28,9 @@ void setParameterValueDSP(DSPRef pDSP, AUParameterAddress address, AUValue value
 
 AUValue getParameterValueDSP(DSPRef pDSP, AUParameterAddress address) { return pDSP->getParameter(address); }
 
-void setBypassDSP(DSPRef pDSP, bool bypass) { pDSP->isStarted = !bypass; }
+void setBypassDSP(DSPRef pDSP, bool bypass) { pDSP->isBypassed = bypass; }
 
-bool getBypassDSP(DSPRef pDSP) { return !pDSP->isStarted; }
-
-void setWavetableDSP(DSPRef pDSP, const float *table, size_t length, int index) {
-    pDSP->setWavetable(table, length, index);
-}
+bool getBypassDSP(DSPRef pDSP) { return pDSP->isBypassed; }
 
 void deleteDSP(DSPRef pDSP) { delete pDSP; }
 
@@ -60,8 +56,6 @@ AUInternalRenderBlock DSPBase::internalRenderBlock() {
                               AUAudioFrameCount frameCount, NSInteger outputBusNumber, AudioBufferList *outputData,
                               const AURenderEvent *realtimeEventListHead,
                               AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
-      assert((outputBusNumber == 0) && "We don't yet support multiple output busses");
-
       if (pullInputBlock) {
           if (bCanProcessInPlace && inputBufferLists.size() == 1) {
               // pull input directly to output buffer
@@ -186,7 +180,7 @@ void DSPBase::processWithEvents(AudioTimeStamp const *timestamp, AUAudioFrameCou
 }
 
 void DSPBase::processOrBypass(AUAudioFrameCount frameCount, AUAudioFrameCount bufferOffset) {
-    if (isStarted) {
+    if (!isBypassed) {
         process(FrameRange{bufferOffset, frameCount});
     } else {
         // Advance all ramps.
@@ -227,10 +221,6 @@ void DSPBase::handleOneEvent(AURenderEvent const *event) {
         break;
     }
 
-    case AURenderEventMIDI:
-        handleMIDIEvent(event->MIDI);
-        break;
-
     default:
         break;
     }
@@ -264,14 +254,5 @@ void DSPBase::zeroOutput(AUAudioFrameCount frames, AUAudioFrameCount bufferOffse
     for (int channel = 0; channel < channelCount; ++channel) {
         float *start = ((float *)outputBufferList->mBuffers[channel].mData) + bufferOffset;
         std::fill(start, start + frames, 0.0);
-    }
-}
-
-void DSPBase::cloneFirstChannel(FrameRange range) {
-    float *firstChannel = ((float *)outputBufferList->mBuffers[0].mData) + range.start;
-
-    for (int channel = 1; channel < channelCount; ++channel) {
-        float *output = ((float *)outputBufferList->mBuffers[channel].mData) + range.start;
-        std::copy(firstChannel, firstChannel + range.count, output);
     }
 }

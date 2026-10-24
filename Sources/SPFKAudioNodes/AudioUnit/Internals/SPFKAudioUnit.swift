@@ -163,21 +163,4 @@ open class SPFKAudioUnit: AUAudioUnit {
     deinit {
         deleteDSP(dsp)
     }
-
-    /// Create an array of values to use as waveforms or other things inside an audio unit
-    /// - Parameters:
-    ///   - wavetable: Array of float values
-    ///   - index: Optional index at which to set the table (useful for multiple waveform audio units)
-    public func setWavetable(_ wavetable: [AUValue], index: Int = 0) {
-        setWavetableDSP(dsp, wavetable, wavetable.count, Int32(index))
-    }
-
-    /// Set wave table
-    /// - Parameters:
-    ///   - data: A pointer to the data
-    ///   - size: Size of the table
-    ///   - index: Index at which to set the value
-    public func setWavetable(data: UnsafePointer<AUValue>?, size: Int, index: Int = 0) {
-        setWavetableDSP(dsp, data, size, Int32(index))
-    }
 }

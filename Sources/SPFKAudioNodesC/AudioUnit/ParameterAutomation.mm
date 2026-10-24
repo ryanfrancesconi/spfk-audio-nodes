@@ -4,11 +4,6 @@
 
 #include "ParameterAutomation.h"
 #include <algorithm>
-#include <iostream>
-#include <list>
-#include <mach/mach_time.h>
-#include <map>
-#include <utility>
 #include <vector>
 
 /// Returns a render observer block which will apply the automation to the

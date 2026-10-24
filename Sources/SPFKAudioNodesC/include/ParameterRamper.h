@@ -14,8 +14,6 @@
 #import <atomic>
 
 class ParameterRamper {
-    float clampLow, clampHigh;
-
     std::atomic<float> _uiValue{0};
 
     float _goal;

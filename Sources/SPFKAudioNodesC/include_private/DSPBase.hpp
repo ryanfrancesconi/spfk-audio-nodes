@@ -5,9 +5,6 @@
 #import <atomic>
 #import <vector>
 
-#define MIDI_NOTE_ON 0x90
-#define MIDI_NOTE_OFF 0x80
-
 struct FrameRange {
     AUAudioFrameCount start;
     AUAudioFrameCount count;
@@ -61,10 +58,6 @@ struct DSPBase {
         return ((float *)inputBufferLists[0]->mBuffers[channel].mData)[frame];
     }
 
-    inline float &input2Sample(int channel, AUAudioFrameCount frame) {
-        return ((float *)inputBufferLists[1]->mBuffers[channel].mData)[frame];
-    }
-
     inline float &outputSample(int channel, AUAudioFrameCount frame) {
         return ((float *)outputBufferList->mBuffers[channel].mData)[frame];
     }
@@ -72,8 +65,6 @@ struct DSPBase {
     void stepRampsBy(AUAudioFrameCount frames);
 
     void zeroOutput(AUAudioFrameCount frames, AUAudioFrameCount bufferOffset);
-
-    void cloneFirstChannel(FrameRange range);
 
   public:
     DSPBase(int inputBusCount = 1, bool canProcessInPlace = false);
@@ -86,7 +77,7 @@ struct DSPBase {
 
     const bool bCanProcessInPlace;
 
-    std::atomic<bool> isStarted{true};
+    std::atomic<bool> isBypassed{false};
 
     void setBuffer(AudioBufferList *buffer, size_t busIndex);
 
@@ -105,75 +96,12 @@ struct DSPBase {
     /// Get the DSP into initialized state
     virtual void reset() {}
 
-    /// Common for oscillators
-    virtual void setWavetable(const float *table, size_t length, int index) {}
-
-    /// Multiple waveform oscillators
-    virtual void setupIndividualWaveform(uint32_t waveform, uint32_t size) {}
-
-    virtual void setIndividualWaveformValue(uint32_t waveform, uint32_t index,
-                                            float value) {}
-
     /// override this if your DSP kernel allocates memory or requires the
     /// session sample rate for initialization
     virtual void init(int channelCount, double sampleRate);
 
     /// override this if your DSP kernel allocates memory; free it here
     virtual void deinit();
-
-    /// Override to handle midi events manually. By default this calls noteOn
-    /// and noteOff to save you from having to parse MIDI. Eventually, we'll add
-    /// more.
-    virtual void handleMIDIEvent(AUMIDIEvent const &midiEvent) {
-        if (midiEvent.length != 3) {
-            return;
-        }
-
-        uint8_t status = midiEvent.data[0] & 0xF0;
-
-        switch (status) {
-        case MIDI_NOTE_ON: {
-            uint8_t note = midiEvent.data[1];
-            uint8_t veloc = midiEvent.data[2];
-
-            if (note > 127 || veloc > 127) {
-                break;
-            }
-
-            // A note on message with velocity 0 is actually a note off!
-            // Who woulda thunk?!
-            // See
-            // https://www.midi.org/forum/228-writing-midi-software-send-note-off,-or-zero-velocity-note-on
-
-            if (veloc == 0) {
-                noteOff(note, veloc);
-            } else {
-                noteOn(note, veloc);
-            }
-
-            break;
-        }
-
-        case MIDI_NOTE_OFF: {
-            uint8_t note = midiEvent.data[1];
-            uint8_t veloc = midiEvent.data[2];
-
-            if (note > 127) {
-                break;
-            }
-
-            noteOff(note, veloc);
-            break;
-        }
-        }
-    }
-
-    /// Override to handle MIDI note on messages.
-    virtual void noteOn(uint8_t note, uint8_t velocity) {}
-
-    /// Override to handle MIDI note off messages. Velocity can refer to a
-    /// release envelope.
-    virtual void noteOff(uint8_t note, uint8_t velocity) {}
 
     virtual void startRamp(const AUParameterEvent &event);
 
