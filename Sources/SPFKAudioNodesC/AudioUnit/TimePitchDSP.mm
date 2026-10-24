@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <mach/mach_time.h>
 
 void setQualityTimePitchDSP(DSPRef pDSP, TimePitchDSPQuality quality) {
     static_cast<TimePitchDSP *>(pDSP)->setQuality(quality);
@@ -13,11 +14,47 @@ double latencyAtRateTimePitchDSP(DSPRef pDSP, double rate) {
     return static_cast<TimePitchDSP *>(pDSP)->latencyAtRate(rate);
 }
 
+double holdUntilSampleTimeTimePitchDSP(DSPRef pDSP, double sampleTime) {
+    return static_cast<TimePitchDSP *>(pDSP)->holdUntilSampleTime(sampleTime);
+}
+
+double holdUntilHostTimeTimePitchDSP(DSPRef pDSP, uint64_t hostTime) {
+    return static_cast<TimePitchDSP *>(pDSP)->holdUntilHostTime(hostTime);
+}
+
 int64_t inputFramesPulledTimePitchDSP(DSPRef pDSP) { return static_cast<TimePitchDSP *>(pDSP)->framesPulled(); }
 
 TimePitchDSP::TimePitchDSP() : DSPBase(1, false) {
     for (auto &value : parameterValues) value.store(0);
     parameterValues[TimePitchParameterRate].store(1);
+
+    mach_timebase_info_data_t timebase;
+    mach_timebase_info(&timebase);
+    hostTicksPerSecond = 1e9 * double(timebase.denom) / double(timebase.numer);
+}
+
+// Never behind the counter, so no frame the node pulls before the hold lands reaches it.
+double TimePitchDSP::reserveUpstreamTime(double atLeast) {
+    const double reserved = std::round(std::max(atLeast, publishedInputTime.load(std::memory_order_acquire) + 1));
+    holdUpstreamTime.store(reserved, std::memory_order_relaxed);
+    return reserved;
+}
+
+double TimePitchDSP::holdUntilSampleTime(double sampleTime) {
+    const double upstream = reserveUpstreamTime(publishedInputTime.load(std::memory_order_acquire) + sampleRate);
+    holdSampleTime.store(sampleTime, std::memory_order_relaxed);
+    holdKind.store(HoldSample, std::memory_order_release);
+    return upstream;
+}
+
+double TimePitchDSP::holdUntilHostTime(uint64_t hostTime) {
+    // Where the upstream's own host-to-sample pairing, taken from its last pull, puts `hostTime`.
+    const double ticks = double(hostTime) - double(lastPullHostTime.load(std::memory_order_acquire));
+    const double upstream = reserveUpstreamTime(lastPullSampleTime.load(std::memory_order_relaxed) +
+                                                ticks / hostTicksPerSecond * sampleRate);
+    holdHostTime.store(hostTime, std::memory_order_relaxed);
+    holdKind.store(HoldHost, std::memory_order_release);
+    return upstream;
 }
 
 TimePitchDSP::~TimePitchDSP() {
@@ -128,6 +165,11 @@ void TimePitchDSP::reset() {
 
 AUAudioUnitStatus TimePitchDSP::pull(const AudioTimeStamp *timestamp, AUAudioFrameCount frames,
                                      AURenderPullInputBlock __unsafe_unretained pullInputBlock) {
+    if (timestamp->mFlags & kAudioTimeStampHostTimeValid) {
+        lastPullSampleTime.store(inputSampleTime, std::memory_order_relaxed);
+        lastPullHostTime.store(timestamp->mHostTime, std::memory_order_release);
+    }
+
     for (AUAudioFrameCount done = 0; done < frames;) {
         const AUAudioFrameCount count = std::min(maximumFrames, frames - done);
 
@@ -155,6 +197,7 @@ AUAudioUnitStatus TimePitchDSP::pull(const AudioTimeStamp *timestamp, AUAudioFra
         inputSampleTime += count;
         inputFramesPulled.fetch_add(count, std::memory_order_relaxed);
     }
+    publishedInputTime.store(inputSampleTime, std::memory_order_release);
     return noErr;
 }
 
@@ -193,7 +236,36 @@ AUAudioUnitStatus TimePitchDSP::render(AudioUnitRenderActionFlags *actionFlags, 
         hasInputTime = true;
     }
 
-    const AUAudioFrameCount inputFrames = bypassed ? frameCount : TimePitchKernelInputFramesNeeded(kernelRef, frameCount);
+    // A held start: silence and no pull until the start frame, then the upstream from its first frame.
+    AUAudioFrameCount offset = 0;
+    if (const int kind = holdKind.load(std::memory_order_acquire); kind != HoldNone) {
+        double start = holdSampleTime.load(std::memory_order_relaxed);
+        if (kind == HoldHost) {
+            if (!(timestamp->mFlags & kAudioTimeStampHostTimeValid)) return noErr;
+            const double ticks = double(holdHostTime.load(std::memory_order_relaxed)) - double(timestamp->mHostTime);
+            start = timestamp->mSampleTime + ticks / hostTicksPerSecond * sampleRate;
+        }
+        const double into = start - timestamp->mSampleTime;
+        if (into >= frameCount) {
+            for (int c = 0; c < channelCount; ++c) {
+                AudioBuffer &buffer = outputData->mBuffers[c];
+                buffer.mDataByteSize = UInt32(frameCount * sizeof(float));
+                if (buffer.mData) std::memset(buffer.mData, 0, frameCount * sizeof(float));
+            }
+            return noErr;
+        }
+        offset = into > 0 ? AUAudioFrameCount(std::llround(into)) : 0;
+        int expected = kind;
+        holdKind.compare_exchange_strong(expected, HoldNone);
+        TimePitchKernelReset(kernelRef);
+
+        // The first pull lands on the upstream time the hold reserved, where the player was started.
+        inputSampleTime = holdUpstreamTime.load(std::memory_order_relaxed);
+        hasInputTime = true;
+    }
+    const AUAudioFrameCount renderFrames = frameCount - offset;
+
+    const AUAudioFrameCount inputFrames = bypassed ? renderFrames : TimePitchKernelInputFramesNeeded(kernelRef, renderFrames);
     if (inputFrames > inputCapacity) return kAudioUnitErr_TooManyFramesToProcess;
 
     if (const AUAudioUnitStatus status = pull(timestamp, inputFrames, pullInputBlock); status != noErr) {
@@ -204,12 +276,14 @@ AUAudioUnitStatus TimePitchDSP::render(AudioUnitRenderActionFlags *actionFlags, 
         AudioBuffer &buffer = outputData->mBuffers[c];
         buffer.mDataByteSize = UInt32(frameCount * sizeof(float));
 
+        if (buffer.mData && offset > 0) std::memset(buffer.mData, 0, offset * sizeof(float));
+
         if (bypassed && buffer.mData == nullptr) {
             buffer.mData = inputStorage[c].data();
         } else if (bypassed) {
-            std::memcpy(buffer.mData, inputStorage[c].data(), frameCount * sizeof(float));
+            std::memcpy((float *)buffer.mData + offset, inputStorage[c].data(), renderFrames * sizeof(float));
         }
-        outputPointers[c] = (float *)buffer.mData;
+        outputPointers[c] = buffer.mData ? (float *)buffer.mData + offset : nullptr;
     }
 
     if (bypassed) return noErr;
@@ -219,6 +293,6 @@ AUAudioUnitStatus TimePitchDSP::render(AudioUnitRenderActionFlags *actionFlags, 
         if (!pointer) return kAudioUnitErr_InvalidParameter;
     }
 
-    TimePitchKernelProcess(kernelRef, inputPointers.data(), inputFrames, outputPointers.data(), frameCount);
+    TimePitchKernelProcess(kernelRef, inputPointers.data(), inputFrames, outputPointers.data(), renderFrames);
     return noErr;
 }

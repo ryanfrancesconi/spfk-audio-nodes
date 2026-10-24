@@ -104,6 +104,35 @@ final class TimePitchPullTests: TestCaseModel {
         }
     }
 
+    /// The node owns the start: it holds until an output sample, and the player is started at the
+    /// upstream sample time the node's first pull will carry.
+    @Test(arguments: [0.5, 2] as [Double])
+    func heldStartAndLoopLandAtTheRate(rate: Double) async throws {
+        let passFrames = Int(sampleRate)
+        let input = try TimePitchRig.makeClicks(frames: passFrames, every: clickSpacing, first: clickSpacing / 2)
+        let rig = try await TimePitchRig { $0.rate = AUValue(rate) }
+
+        _ = try rig.render(frames: 20 * 512)
+        let renderStart = rig.engine.manualRenderingSampleTime
+        let start = renderStart + 1000 // mid-block
+
+        let upstream = try #require(rig.timePitch.holdUntil(sampleTime: start))
+        rig.player.scheduleBuffer(input, at: AVAudioTime(sampleTime: 0, atRate: sampleRate), completionHandler: nil)
+        rig.player.scheduleBuffer(input, at: nil, completionHandler: nil)
+        rig.player.play(at: AVAudioTime(sampleTime: upstream, atRate: sampleRate))
+
+        let latency = rig.timePitch.latency(atRate: rate) * sampleRate
+        let output = try rig.render(frames: Int(Double(2 * passFrames) / rate + latency) + 4000)
+
+        let firstPass = Array(stride(from: clickSpacing / 2, to: passFrames, by: clickSpacing))
+        let bothPasses = firstPass + firstPass.map { $0 + passFrames }
+        let landing = landings(in: output[0], clicks: bothPasses) { 1000 + Double($0) / rate + latency }
+
+        reportTimePitch("held start \(rate)x", "start sample \(start), \(landing.description), first click \(firstClick(in: output[0]) ?? -1)")
+        #expect(landing.deviations.count == bothPasses.count)
+        #expect(landing.worst <= 2)
+    }
+
     // MARK: - Retime
 
     /// A rate change while playing. Reports where the change becomes audible, as the intercept

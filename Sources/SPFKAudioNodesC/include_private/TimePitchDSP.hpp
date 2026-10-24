@@ -26,6 +26,20 @@ struct TimePitchDSP : DSPBase {
 
     std::atomic<int64_t> inputFramesPulled{0};
 
+    enum HoldKind : int { HoldNone, HoldSample, HoldHost };
+    std::atomic<int> holdKind{HoldNone};
+    std::atomic<double> holdSampleTime{0};
+    std::atomic<uint64_t> holdHostTime{0};
+    std::atomic<double> holdUpstreamTime{0};
+    /// The input counter as of the last block, for a hold to reserve a start ahead of.
+    std::atomic<double> publishedInputTime{0};
+    /// The host time of the last block's first pull, and the counter it carried.
+    std::atomic<uint64_t> lastPullHostTime{0};
+    std::atomic<double> lastPullSampleTime{0};
+
+    double reserveUpstreamTime(double atLeast);
+    double hostTicksPerSecond = 0;
+
     AUAudioFrameCount maximumFrames = 0;
     AUAudioFrameCount inputCapacity = 0;
     std::vector<std::vector<float>> inputStorage;
@@ -52,6 +66,8 @@ struct TimePitchDSP : DSPBase {
     ~TimePitchDSP() override;
 
     void setQuality(TimePitchDSPQuality newQuality);
+    double holdUntilSampleTime(double sampleTime);
+    double holdUntilHostTime(uint64_t hostTime);
     double latencyAtRate(double rate);
     int64_t framesPulled() const { return inputFramesPulled.load(std::memory_order_relaxed); }
 

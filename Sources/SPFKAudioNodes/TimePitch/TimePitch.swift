@@ -107,6 +107,20 @@ public class TimePitch: AudioEngineNodeAU, TypeDescribable {
         return latencyAtRateTimePitchDSP(dsp, rate)
     }
 
+    /// Renders silence and pulls nothing until `sampleTime`, an output sample time, then pulls
+    /// the upstream. Returns where the upstream player must be started: its first pull carries
+    /// that sample time.
+    public func holdUntil(sampleTime: AVAudioFramePosition) -> AVAudioFramePosition? {
+        guard let dsp else { return nil }
+        return AVAudioFramePosition(holdUntilSampleTimeTimePitchDSP(dsp, Double(sampleTime)))
+    }
+
+    /// As ``holdUntil(sampleTime:)``, at a host time.
+    public func holdUntil(hostTime: UInt64) -> AVAudioFramePosition? {
+        guard let dsp else { return nil }
+        return AVAudioFramePosition(holdUntilHostTimeTimePitchDSP(dsp, hostTime))
+    }
+
     /// Every input frame pulled since render resources were allocated.
     var inputFramesPulled: Int64 {
         guard let dsp else { return 0 }
