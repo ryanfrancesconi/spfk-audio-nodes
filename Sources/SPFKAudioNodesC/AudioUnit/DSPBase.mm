@@ -67,7 +67,11 @@ AUInternalRenderBlock DSPBase::internalRenderBlock() {
               // pull input directly to output buffer
               inputBufferLists[0] = outputData;
               AudioUnitRenderActionFlags inputFlags = 0;
-              pullInputBlock(&inputFlags, timestamp, frameCount, 0, inputBufferLists[0]);
+              AUAudioUnitStatus status = pullInputBlock(&inputFlags, timestamp, frameCount, 0, inputBufferLists[0]);
+
+              if (status != noErr) {
+                  return status;
+              }
           } else {
               // pull input to internal buffer
               for (size_t i = 0; i < inputBufferLists.size(); i++) {
@@ -80,7 +84,11 @@ AUInternalRenderBlock DSPBase::internalRenderBlock() {
                   }
 
                   AudioUnitRenderActionFlags inputFlags = 0;
-                  pullInputBlock(&inputFlags, timestamp, frameCount, i, inputBufferLists[i]);
+                  AUAudioUnitStatus status = pullInputBlock(&inputFlags, timestamp, frameCount, i, inputBufferLists[i]);
+
+                  if (status != noErr) {
+                      return status;
+                  }
               }
           }
       }

@@ -161,6 +161,29 @@ final class FaderRenderTests: TestCaseModel {
         #expect(output[1] == written[0])
     }
 
+    // MARK: - Upstream failure
+
+    /// The upstream's own status reaches the engine.
+    @Test func upstreamFailureFailsTheRender() async throws {
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2))
+        let engine = AVAudioEngine()
+        let source = AVAudioSourceNode(format: format) { _, _, _, _ in kAudioUnitErr_NoConnection }
+        let fader = try await Fader()
+
+        engine.attach(source)
+        engine.attach(fader.avAudioNode)
+        engine.connect(source, to: fader.avAudioNode, format: format)
+        engine.connect(fader.avAudioNode, to: engine.outputNode, format: format)
+
+        try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 512)
+        try engine.start()
+        defer { engine.stop() }
+
+        let block = try #require(AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: 512))
+        let error = #expect(throws: NSError.self) { try engine.renderOffline(512, to: block) }
+        #expect(error?.code == Int(kAudioUnitErr_NoConnection))
+    }
+
     // MARK: - Automation timing
 
     private func automate(_ events: [AutomationEvent]) -> (Fader) throws -> Void {
