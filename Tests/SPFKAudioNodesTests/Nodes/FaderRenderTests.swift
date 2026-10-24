@@ -3,6 +3,7 @@
 import AVFoundation
 import Foundation
 import SPFKAudioBase
+import SPFKAudioNodesC
 import SPFKBase
 import SPFKTesting
 import Testing
@@ -128,5 +129,43 @@ final class FaderRenderTests: TestCaseModel {
 
         #expect(output[0] == written[0].map { $0 * leftGain })
         #expect(output[1] == written[1].map { $0 * rightGain })
+    }
+
+    // MARK: - Automation timing
+
+    private func automate(_ events: [AutomationEvent]) -> (Fader) throws -> Void {
+        { [sampleRate] in try $0.automate(events: events, startTime: AVAudioTime(sampleTime: 0, atRate: sampleRate)) }
+    }
+
+    /// Asserts both channels first satisfy `predicate` within two frames of `expected`.
+    private func expectFirstFrame(
+        in output: [[Float]], where predicate: (Float) -> Bool, at expected: Int,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        for channel in output {
+            let frame = channel.firstIndex(where: predicate) ?? -1
+            #expect(abs(frame - expected) <= 2, "first frame \(frame), expected \(expected)", sourceLocation: sourceLocation)
+        }
+    }
+
+    @Test(arguments: [512, 4096] as [AVAudioFrameCount])
+    func automatedStepLandsOnItsFrame(blockSize: AVAudioFrameCount) async throws {
+        let output = try await render(
+            makeDC(frames: 48000),
+            blockSize: blockSize,
+            started: automate([AutomationEvent(targetValue: 0, startTime: 0.5, rampDuration: 0)])
+        )
+        expectFirstFrame(in: output, where: { $0 < 0.99999 }, at: 24000)
+    }
+
+    @Test(arguments: [512, 4096] as [AVAudioFrameCount])
+    func automatedRampStartsAndEndsOnItsFrames(blockSize: AVAudioFrameCount) async throws {
+        let output = try await render(
+            makeDC(frames: 48000),
+            blockSize: blockSize,
+            started: automate([AutomationEvent(targetValue: 0, startTime: 0.25, rampDuration: 0.25)])
+        )
+        expectFirstFrame(in: output, where: { $0 < 0.99999 }, at: 12000)
+        expectFirstFrame(in: output, where: { $0 == 0 }, at: 24000)
     }
 }

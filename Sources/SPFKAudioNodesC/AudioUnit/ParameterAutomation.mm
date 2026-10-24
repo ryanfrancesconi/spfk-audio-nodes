@@ -80,8 +80,8 @@ extern "C" AURenderObserver ParameterAutomationGetRenderObserver(AUParameterAddr
               sampleOffset = 0;
           }
 
-          scheduleParameterBlock((AUEventSampleTime)sampleOffset, (AUAudioFrameCount)rawDuration, address,
-                                 event.targetValue);
+          scheduleParameterBlock(AUEventSampleTimeImmediate + (AUEventSampleTime)sampleOffset,
+                                 (AUAudioFrameCount)rawDuration, address, event.targetValue);
 
           index++;
       }
