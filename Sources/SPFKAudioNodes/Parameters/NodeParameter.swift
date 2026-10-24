@@ -4,7 +4,8 @@ import AVFoundation
 import SPFKAudioBase
 import SPFKBase
 
-/// Wraps an AUParameter with clamped value access, ramping and automation.
+/// Wraps an AUParameter with clamped value access and the touch gesture; a node's automation is
+/// its ``NodeAutomation``.
 public class NodeParameter {
     public private(set) weak var avAudioNode: AVAudioNode?
 
@@ -86,80 +87,17 @@ public class NodeParameter {
         self.parameter = parameter
     }
 
-    // MARK: Automation
+    // MARK: Touch
 
-    public var renderObserverToken: Int?
-
-    /// Tokens for loop-batch automation observers. Multiple may coexist, each covering
-    /// a non-overlapping future time range. Cleared by stopLoopAutomation().
-    public internal(set) var loopObserverTokens: [Int] = []
-
-    /// Automate to a new value using a ramp.
-    public func ramp(to value: AUValue, duration: Float, delay: Float = 0, sampleRate: Float) {
-        guard let parameter else { return }
-
-        var delaySamples = AUAudioFrameCount(delay * sampleRate)
-
-        if delaySamples > 4096 {
-            Log.error("Warning: delay longer than 4096, setting to to 4096")
-            delaySamples = 4096
-        }
-
-        if !parameter.flags.contains(.flag_CanRamp) {
-            Log.error("Error: can't ramp parameter \(parameter.displayName)")
-            return
-        }
-
-        let paramBlock = avAudioNode?.auAudioUnit.scheduleParameterBlock
-
-        paramBlock?(
-            AUEventSampleTimeImmediate + Int64(delaySamples),
-            AUAudioFrameCount(duration * sampleRate),
-            parameter.address,
-            value.clamped(to: range)
-        )
-    }
-
-    private var parameterObserverToken: AUParameterObserverToken?
-
-    /// Records automation for this parameter.
-    /// - Parameter callback: Called on the main queue for each parameter event.
-    @MainActor public func recordAutomation(callback: @escaping (AUParameterAutomationEvent) -> Void) {
-        guard let parameter else { return }
-
-        parameterObserverToken = parameter.token(byAddingParameterAutomationObserver: { numberEvents, events in
-            for index in 0 ..< numberEvents {
-                let event = events[index]
-
-                // Dispatching to main thread avoids the restrictions
-                // required of parameter automation observers.
-                Task { @MainActor in
-                    callback(event)
-                }
-            }
-        })
-    }
-
-    /// Stop calling the function passed to `recordAutomation`
-    public func stopRecording() {
-        if let token = parameterObserverToken {
-            parameter?.removeParameterObserver(token)
-        }
-    }
-
-    /// Sends a .touch event to the parameter automation observer, beginning automation recording if
-    /// enabled in ParameterAutomation, and holds the parameter for a `.touch` or `.latch` curve.
-    /// A value may be passed as the initial automation value. The current value is used if none is passed.
-    /// - Parameter value: Initial value
+    /// Begins a touch: an ``AutomationRecorder`` records it, and a `.touch` or `.latch` curve yields
+    /// the parameter to it. Starts at `value`, or the current value.
     public func beginTouch(value: AUValue? = nil) {
         guard let value = value ?? parameter?.value else { return }
         parameter?.setValue(value, originator: nil, atHostTime: 0, eventType: .touch)
         (avAudioNode?.auAudioUnit as? SPFKAudioUnit)?.setTouched(def.address, true)
     }
 
-    /// Sends a .release event to the parameter observation observer, ending any automation recording.
-    /// A value may be passed as the final automation value. The current value is used if none is passed.
-    /// - Parameter value: Final value
+    /// Ends a touch at `value`, or the current value; a `.touch` curve glides back from it.
     public func endTouch(value: AUValue? = nil) {
         guard let value = value ?? parameter?.value else { return }
         parameter?.setValue(value, originator: nil, atHostTime: 0, eventType: .release)

@@ -18,20 +18,6 @@ final class FadeRenderAccuracyTests: TestCaseModel {
 
     private let rate = GainRenderHarness.sampleRate
 
-    /// The fade's events as `TransportPlayer.applyStoredFadeAutomation` builds them for a region of
-    /// `regionDuration` played from `position`, and the gain it sets before automating.
-    private func liveFade(
-        _ fade: FadeDescription, regionDuration: TimeInterval, position: TimeInterval = 0
-    ) -> (events: [AutomationEvent], initialGain: AUValue) {
-        var description = RegionFadeDescription()
-        description.fade = fade
-        description.segmentDuration = regionDuration - position
-        description.playbackStartOffset = position
-        let initialGain = description.gainAt(playbackOffset: position)
-        let events = (description.fadeInCurve()?.events ?? []) + (description.fadeOutCurve()?.events ?? [])
-        return (events, initialGain)
-    }
-
     private func exactGain(_ fade: FadeDescription, regionDuration: TimeInterval, at position: TimeInterval) -> Float {
         if fade.inTime > 0, position < fade.inTime {
             return Float(fade.inTaper.gain(at: position / fade.inTime))
@@ -178,86 +164,4 @@ final class FadeRenderAccuracyTests: TestCaseModel {
         #expect(after.maxAbs <= 1e-6, "after the write: \(after)")
         #expect(Array(output[0][setAt - 1 ..< setAt + dezipper + 1]).largestStep.step < 0.001)
     }
-
-    /// `update(normalize:)` mid-fade: the gain set, then the fade re-applied from the playhead with
-    /// the node's last render as its anchor. The played curve should be the new fade, on the frame.
-    @Test func reappliedFadeLandsOnThePlayhead() async throws {
-        let input = try GainRenderHarness.makeDC(seconds: 2.5)
-        let original = liveFade(FadeDescription(inTime: 2), regionDuration: 4)
-        let applyAt = 49152
-        let position = Double(applyAt) / rate
-        let normalizedMax: AUValue = 2
-
-        var description = RegionFadeDescription()
-        description.fade = FadeDescription(inTime: 2)
-        description.segmentDuration = 4 - position
-        description.playbackStartOffset = position
-        description.maximumGain = normalizedMax
-        let reappliedGain = description.gainAt(playbackOffset: position)
-        let reappliedEvents = description.fadeInCurve()?.events ?? []
-
-        let output = try await GainRenderHarness.render(
-            input, blockSize: 512,
-            configure: { $0.gain = original.initialGain },
-            started: { try $0.automate(events: original.events, startTime: GainRenderHarness.renderStart) },
-            beforeBlock: { rendered, channelGain in
-                guard rendered == applyAt else { return }
-                channelGain.gain = reappliedGain
-                try channelGain.automate(events: reappliedEvents, offset: 0)
-            }
-        )
-
-        // Past the crop's first segment, where only the anchor decides the alignment.
-        let window = Int(0.3 * rate) ..< Int(0.8 * rate)
-        let played = window.map { output[0][applyAt + $0] }
-        let maxShift = 2048
-        let reference = (-maxShift ..< window.count + maxShift).map {
-            piecewiseLinear(reappliedEvents, frame: window.lowerBound + $0, rate: rate)
-        }
-        let lead = bestShift(played, maxShift: maxShift) { reference[$0 + maxShift] }
-
-        reportMeasure("reapply anchor", "fade leads the playhead by \(lead) frames at block 512")
-        #expect(abs(lead) <= 1, "fade leads the playhead by \(lead) frames")
-    }
-}
-
-// MARK: - Reference evaluation
-
-/// The value a list of linear events reaches at `frame`, as the DSP ramps them: each event ramps
-/// from wherever the previous one had got to. Times become frames by truncation, as the render
-/// observer converts them.
-func piecewiseLinear(_ events: [AutomationEvent], initial: Float = 0, frame: Int, rate: Double) -> Float {
-    var from = initial
-    var current: (start: Int, duration: Int, target: Float)?
-
-    func value(startingAt start: Float, at f: Int) -> Float {
-        guard let current else { return start }
-        let elapsed = f - current.start
-        guard current.duration > 0, elapsed < current.duration else { return current.target }
-        return start + (current.target - start) * Float(elapsed) / Float(current.duration)
-    }
-
-    for event in events.sorted(by: { $0.startTime < $1.startTime }) {
-        let start = Int((Double(event.startTime) * rate).rounded(.down))
-        guard start <= frame else { break }
-        from = value(startingAt: from, at: start)
-        current = (start, Int(Double(event.rampDuration) * rate), event.targetValue)
-    }
-
-    return value(startingAt: from, at: frame)
-}
-
-/// The shift `d` for which `measured[k]` best matches `reference(k + d)`: how many frames ahead of
-/// the reference the measured curve runs.
-func bestShift(_ measured: [Float], maxShift: Int, reference: (Int) -> Float) -> Int {
-    var best = (shift: 0, error: Float.infinity)
-    let stride = 16
-    for shift in -maxShift ... maxShift {
-        var error: Float = 0
-        for k in Swift.stride(from: 0, to: measured.count, by: stride) {
-            error += abs(measured[k] - reference(k + shift))
-        }
-        if error < best.error { best = (shift, error) }
-    }
-    return best.shift
 }

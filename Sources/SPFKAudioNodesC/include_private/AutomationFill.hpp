@@ -42,7 +42,7 @@ static inline void spfk_fill_automation(const SPFKCurveSegment *segments, long c
         if (index < 0 || position >= segments[index].end) {
             if (heldIndex != index) {
                 heldIndex = index;
-                held = (float)(index < 0 ? spfk_curve_segment_value(&segments[0], segments[0].start)
+                held = (float)(index < 0 ? spfk_curve_segment_start_value(&segments[0])
                                          : spfk_curve_segment_value(&segments[index], segments[index].end));
             }
             values[i] = held;

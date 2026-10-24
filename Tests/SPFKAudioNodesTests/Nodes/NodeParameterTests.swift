@@ -45,13 +45,6 @@ struct NodeParameterTests {
         #expect(param.boolValue == false)
     }
 
-    @Test func unassociatedRampDoesNotCrash() {
-        let param = NodeParameter(Self.testDef)
-
-        // ramp should silently return when parameter is nil
-        param.ramp(to: 1.0, duration: 0.1, sampleRate: 44100)
-    }
-
     @Test func unassociatedBeginEndTouchDoesNotCrash() {
         let param = NodeParameter(Self.testDef)
 

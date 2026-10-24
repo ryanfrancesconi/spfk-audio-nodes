@@ -136,8 +136,14 @@ final class ChannelGainRenderTests: TestCaseModel {
 
     // MARK: - Automation timing
 
-    private func automate(_ events: [AutomationEvent]) -> (ChannelGain) throws -> Void {
-        { [sampleRate] in try $0.automate(events: events, startTime: AVAudioTime(sampleTime: 0, atRate: sampleRate)) }
+    private func automate(_ segment: CurveSegment) -> (ChannelGain) throws -> Void {
+        { [sampleRate] channelGain in
+            let curve = try ParameterCurve([segment])
+            try channelGain.automation.publish(
+                [ChannelGainParameter.leftGain.rawValue: curve, ChannelGainParameter.rightGain.rawValue: curve],
+                mapping: TimelineMapping(renderAnchor: .sample(0), sourceAnchor: 0, renderSampleRate: sampleRate)
+            )
+        }
     }
 
     /// Asserts both channels first satisfy `predicate` within two frames of `expected`.
@@ -156,7 +162,7 @@ final class ChannelGainRenderTests: TestCaseModel {
         let output = try await render(
             makeDC(frames: 48000),
             blockSize: blockSize,
-            started: automate([AutomationEvent(targetValue: 0, startTime: 0.5, rampDuration: 0)])
+            started: automate(CurveSegment(start: 0.5, end: 0.5, startValue: 1, endValue: 0))
         )
         expectFirstFrame(in: output, where: { $0 < 0.99999 }, at: 24000)
     }
@@ -166,7 +172,7 @@ final class ChannelGainRenderTests: TestCaseModel {
         let output = try await render(
             makeDC(frames: 48000),
             blockSize: blockSize,
-            started: automate([AutomationEvent(targetValue: 0, startTime: 0.25, rampDuration: 0.25)])
+            started: automate(CurveSegment(start: 0.25, end: 0.5, startValue: 1, endValue: 0))
         )
         expectFirstFrame(in: output, where: { $0 < 0.99999 }, at: 12000)
         expectFirstFrame(in: output, where: { $0 == 0 }, at: 24000)
