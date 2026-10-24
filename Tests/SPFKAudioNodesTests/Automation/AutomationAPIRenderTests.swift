@@ -75,18 +75,17 @@ final class AutomationAPIRenderTests: TestCaseModel {
 
     // MARK: - Track automation
 
-    /// UI points through `AutomationCurve(automationPoints:taper:)` play the curve they describe.
+    /// UI points through `ParameterCurve(points:taper:)` play the curve they describe.
     @Test func trackAutomationPlaysItsCurve() async throws {
         let times: [TimeInterval] = [0.1, 0.6, 1.1, 1.6, 2.1]
         let gains: [AUValue] = [0.2, 1.0, 0.3, 0.9, 0.1]
         let taper = AudioTaper.default
         let points = zip(times, gains).map { AutomationPoint(time: $0, gain: $1) }
-        let curve = AutomationCurve(automationPoints: points, taper: taper)
+        let curve = try ParameterCurve(points: points, taper: taper)
 
         let output = try await GainRenderHarness.render(
             GainRenderHarness.makeDC(seconds: 2.3), blockSize: 512,
-            configure: { $0.gain = gains[0] },
-            started: { try $0.automate(events: curve.events, startTime: GainRenderHarness.renderStart) }
+            started: { try GainRenderHarness.publish(curve, on: $0, combine: .replace) }
         )
 
         // Each segment ramps from the previous point's gain with the taper, inverted going down.
@@ -99,13 +98,11 @@ final class AutomationAPIRenderTests: TestCaseModel {
             return from + (to - from) * Float(shape.gain(at: x))
         }
 
-        let range = Int(times[0] * rate) ..< output[0].count
+        let range = 0 ..< output[0].count
         let error = CurveError(output[0][range], range.map { exact(at: Double($0) / rate) }[...])
-        reportMeasure("track automation", "\(error), \(curve.events.count) events")
+        reportMeasure("track automation", "\(error)")
 
-        withKnownIssue("piecewise-linear sampling: \(error)") {
-            #expect(error.maxAbs <= 1e-4, "\(error)")
-        }
+        #expect(error.maxAbs <= 1e-6, "\(error)")
     }
 
     // MARK: - Recording

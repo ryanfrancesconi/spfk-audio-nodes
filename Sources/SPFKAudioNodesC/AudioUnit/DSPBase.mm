@@ -12,11 +12,15 @@ bool canProcessInPlaceDSP(DSPRef pDSP) { return pDSP->bCanProcessInPlace; }
 
 void setBufferDSP(DSPRef pDSP, AudioBufferList *buffer, size_t busIndex) { pDSP->setBuffer(buffer, busIndex); }
 
-void allocateRenderResourcesDSP(DSPRef pDSP, uint32_t channelCount, double sampleRate) {
+void allocateRenderResourcesDSP(DSPRef pDSP, uint32_t channelCount, double sampleRate, uint32_t maximumFrames) {
     pDSP->init(channelCount, sampleRate);
+    pDSP->allocateAutomation(maximumFrames);
 }
 
-void deallocateRenderResourcesDSP(DSPRef pDSP) { pDSP->deinit(); }
+void deallocateRenderResourcesDSP(DSPRef pDSP) {
+    pDSP->deinit();
+    pDSP->automation.drainRetired();
+}
 
 void resetDSP(DSPRef pDSP) { pDSP->reset(); }
 
@@ -126,6 +130,14 @@ void DSPBase::init(int channelCount, double sampleRate) {
 
 void DSPBase::deinit() { isInitialized = false; }
 
+void DSPBase::allocateAutomation(AUAudioFrameCount maximumFrames) {
+    // Rampers fill `parameters` from address 0 without gaps, as the dezipper loop assumes.
+    int count = 0;
+    while (count < maxParameters && parameters[count]) ++count;
+
+    automation.allocate(count, maximumFrames, sampleRate, parameters);
+}
+
 DSPBase::~DSPBase() {}
 
 void DSPBase::processWithEvents(AudioTimeStamp const *timestamp, AUAudioFrameCount frameCount,
@@ -140,6 +152,8 @@ void DSPBase::processWithEvents(AudioTimeStamp const *timestamp, AUAudioFrameCou
             break;
         }
     }
+
+    automation.beginBlock(timestamp, frameCount, parameters);
 
     AUAudioFrameCount framesRemaining = frameCount;
     AURenderEvent const *event = events;
@@ -175,6 +189,8 @@ void DSPBase::processWithEvents(AudioTimeStamp const *timestamp, AUAudioFrameCou
 
         performAllSimultaneousEvents(now, event);
     }
+
+    automation.endBlock(parameters);
 }
 
 void DSPBase::processOrBypass(AUAudioFrameCount frameCount, AUAudioFrameCount bufferOffset) {

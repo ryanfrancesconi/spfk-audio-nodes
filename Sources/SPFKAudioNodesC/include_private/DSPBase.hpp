@@ -4,6 +4,8 @@
 #import <atomic>
 #import <vector>
 
+#include "AutomationScheduler.hpp"
+
 struct FrameRange {
     AUAudioFrameCount start;
     AUAudioFrameCount count;
@@ -77,6 +79,12 @@ struct DSPBase {
     const bool bCanProcessInPlace;
 
     std::atomic<bool> isBypassed{false};
+
+    /// Every automated parameter of this node, evaluated per frame on the render thread.
+    AutomationScheduler automation;
+
+    /// Sizes the automation buffers for blocks of up to `maximumFrames`.
+    void allocateAutomation(AUAudioFrameCount maximumFrames);
 
     void setBuffer(AudioBufferList *buffer, size_t busIndex);
 

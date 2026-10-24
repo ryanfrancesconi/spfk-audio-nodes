@@ -31,7 +31,7 @@ open class SPFKAudioUnit: AUAudioUnit {
         }
 
         if let outputFormat = outputBusArray.first?.format {
-            allocateRenderResourcesDSP(dsp, outputFormat.channelCount, outputFormat.sampleRate)
+            allocateRenderResourcesDSP(dsp, outputFormat.channelCount, outputFormat.sampleRate, maximumFramesToRender)
         }
     }
 

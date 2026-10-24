@@ -1,0 +1,216 @@
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
+
+#include "AutomationScheduler.hpp"
+
+#include <algorithm>
+#include <mach/mach_time.h>
+
+#include "AutomationFill.hpp"
+#include "DSPBase.hpp"
+#import "ParameterRamper.h"
+
+// MARK: - C entry points
+
+void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long laneCount, SPFKTimelineMapping mapping,
+                          DSPAutomationAnchor anchor) {
+    auto snapshot = new AutomationSnapshot{{}, mapping, anchor};
+    snapshot->lanes.reserve(laneCount);
+
+    for (long i = 0; i < laneCount; ++i) {
+        const DSPAutomationLane &lane = lanes[i];
+        if (lane.segmentCount <= 0 || lane.segments == nullptr) continue;
+
+        snapshot->lanes.push_back(
+            {lane.address, lane.multiplies, std::vector<SPFKCurveSegment>(lane.segments, lane.segments + lane.segmentCount)});
+    }
+
+    pDSP->automation.publish(snapshot);
+}
+
+void drainRetiredAutomationDSP(DSPRef pDSP) { pDSP->automation.drainRetired(); }
+
+AUValue renderedValueDSP(DSPRef pDSP, AUParameterAddress address) { return pDSP->automation.renderedValue(address); }
+
+// MARK: - Lifetime
+
+AutomationScheduler::AutomationScheduler() {
+    std::fill(laneOfParameter, laneOfParameter + maxParameters, -1);
+    std::fill(cursor, cursor + maxParameters, -2);
+    std::fill(lastAutomated, lastAutomated + maxParameters, 0.f);
+    std::fill(hasRendered, hasRendered + maxParameters, false);
+    std::fill(glidePending, glidePending + maxParameters, false);
+    std::fill(glideFrom, glideFrom + maxParameters, 0.f);
+    std::fill(glideOffset, glideOffset + maxParameters, 0.f);
+    std::fill(glideRemaining, glideRemaining + maxParameters, 0u);
+    for (auto &value : rendered) value.store(0.f);
+
+    mach_timebase_info_data_t timebase;
+    mach_timebase_info(&timebase);
+    hostSecondsPerTick = double(timebase.numer) / double(timebase.denom) * 1e-9;
+}
+
+AutomationScheduler::~AutomationScheduler() {
+    drainRetired();
+    delete pending.exchange(nullptr);
+    delete current;
+}
+
+void AutomationScheduler::allocate(int parameterCount, AUAudioFrameCount maximumFrames, double sampleRate,
+                                   ParameterRamper *const *rampers) {
+    this->parameterCount = std::min(parameterCount, maxParameters);
+    this->maximumFrames = maximumFrames;
+    this->sampleRate = sampleRate;
+    glideFrames = uint32_t(sampleRate * 0.02);
+    buffers.assign(size_t(this->parameterCount) * maximumFrames, 0.f);
+
+    for (int i = 0; i < this->parameterCount; ++i) {
+        rendered[i].store(rampers[i]->getLastValue());
+    }
+}
+
+// MARK: - Publishing thread
+
+void AutomationScheduler::publish(AutomationSnapshot *snapshot) {
+    // A snapshot still pending was never adopted, so nothing else holds it.
+    delete pending.exchange(snapshot, std::memory_order_acq_rel);
+    drainRetired();
+}
+
+void AutomationScheduler::drainRetired() {
+    uint32_t tail = retiredTail.load(std::memory_order_relaxed);
+    uint32_t head = retiredHead.load(std::memory_order_acquire);
+
+    while (tail != head) {
+        delete retired[tail % retireCapacity];
+        ++tail;
+    }
+
+    retiredTail.store(tail, std::memory_order_release);
+}
+
+float AutomationScheduler::renderedValue(AUParameterAddress address) const {
+    if (address >= AUParameterAddress(parameterCount)) return 0.f;
+    return rendered[address].load(std::memory_order_relaxed);
+}
+
+// MARK: - Render thread
+
+void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFrameCount frameCount,
+                                     ParameterRamper *const *rampers) {
+    if (maximumFrames == 0) return;
+
+    uint32_t head = retiredHead.load(std::memory_order_relaxed);
+    bool canRetire = head - retiredTail.load(std::memory_order_acquire) < retireCapacity;
+
+    if (current == nullptr || canRetire) {
+        if (auto snapshot = pending.exchange(nullptr, std::memory_order_acq_rel)) {
+            adopt(snapshot, timestamp, rampers);
+        }
+    }
+
+    if (current == nullptr) return;
+
+    AUAudioFrameCount frames = std::min(frameCount, maximumFrames);
+    int64_t firstSample = int64_t(timestamp->mSampleTime);
+
+    for (int parameter = 0; parameter < parameterCount; ++parameter) {
+        int lane = laneOfParameter[parameter];
+        if (lane < 0) continue;
+
+        const AutomationLane &automation = current->lanes[lane];
+        float *values = &buffers[size_t(parameter) * maximumFrames];
+
+        spfk_fill_automation(automation.segments.data(), long(automation.segments.size()), &current->mapping,
+                             firstSample, frames, &cursor[parameter], values);
+
+        applyGlide(parameter, values, frames);
+        lastAutomated[parameter] = values[frames - 1];
+        hasRendered[parameter] = true;
+
+        rampers[parameter]->setAutomation(values, automation.multiplies);
+    }
+}
+
+void AutomationScheduler::endBlock(ParameterRamper *const *rampers) {
+    for (int parameter = 0; parameter < parameterCount; ++parameter) {
+        rendered[parameter].store(rampers[parameter]->getLastValue(), std::memory_order_relaxed);
+    }
+}
+
+void AutomationScheduler::adopt(AutomationSnapshot *snapshot, const AudioTimeStamp *timestamp,
+                                ParameterRamper *const *rampers) {
+    if (current) {
+        uint32_t head = retiredHead.load(std::memory_order_relaxed);
+        retired[head % retireCapacity] = current;
+        retiredHead.store(head + 1, std::memory_order_release);
+    }
+
+    current = snapshot;
+    current->mapping.renderAnchor = bindAnchor(current->anchor, timestamp);
+
+    int laneOf[maxParameters];
+    std::fill(laneOf, laneOf + maxParameters, -1);
+
+    for (size_t lane = 0; lane < current->lanes.size(); ++lane) {
+        AUParameterAddress address = current->lanes[lane].address;
+        if (address < AUParameterAddress(parameterCount) && laneOf[address] < 0) laneOf[address] = int(lane);
+    }
+
+    for (int parameter = 0; parameter < parameterCount; ++parameter) {
+        bool wasAutomated = laneOfParameter[parameter] >= 0;
+
+        if (laneOf[parameter] >= 0) {
+            // Replacing running automation glides from where it was; a first snapshot starts on its curve.
+            glidePending[parameter] = wasAutomated && hasRendered[parameter] && glideFrames > 0;
+            glideFrom[parameter] = lastAutomated[parameter];
+            glideRemaining[parameter] = 0;
+            cursor[parameter] = -2;
+        } else if (wasAutomated) {
+            rampers[parameter]->detachAutomation(glideFrames);
+            hasRendered[parameter] = false;
+        }
+
+        laneOfParameter[parameter] = laneOf[parameter];
+    }
+}
+
+int64_t AutomationScheduler::bindAnchor(const DSPAutomationAnchor &anchor, const AudioTimeStamp *timestamp) const {
+    int64_t blockStart = int64_t(timestamp->mSampleTime);
+
+    switch (anchor.kind) {
+    case DSPAutomationAnchorSample:
+        return anchor.sampleTime;
+
+    case DSPAutomationAnchorAtAdoption:
+        return blockStart;
+
+    case DSPAutomationAnchorHost: {
+        if (!(timestamp->mFlags & kAudioTimeStampHostTimeValid)) return blockStart;
+
+        double ticks = anchor.hostTime >= timestamp->mHostTime ? double(anchor.hostTime - timestamp->mHostTime)
+                                                               : -double(timestamp->mHostTime - anchor.hostTime);
+        double rateScalar = (timestamp->mFlags & kAudioTimeStampRateScalarValid) && timestamp->mRateScalar > 0
+                                ? timestamp->mRateScalar
+                                : 1.0;
+
+        // mRateScalar is actual host ticks per frame over nominal.
+        double frames = ticks * hostSecondsPerTick * sampleRate / rateScalar;
+        return blockStart + int64_t(llround(frames));
+    }
+    }
+
+    return blockStart;
+}
+
+void AutomationScheduler::applyGlide(int parameter, float *values, AUAudioFrameCount frameCount) {
+    if (glidePending[parameter]) {
+        glidePending[parameter] = false;
+        glideOffset[parameter] = glideFrom[parameter] - values[0];
+        glideRemaining[parameter] = glideFrames;
+    }
+
+    for (AUAudioFrameCount i = 0; i < frameCount && glideRemaining[parameter] > 0; ++i) {
+        values[i] += glideOffset[parameter] * float(glideRemaining[parameter]) / float(glideFrames);
+        --glideRemaining[parameter];
+    }
+}

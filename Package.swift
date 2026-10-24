@@ -34,7 +34,9 @@ let package = Package(
         ),
         .target(
             name: "SPFKAudioNodesC",
-            dependencies: [],
+            dependencies: [
+                .product(name: "SPFKAudioBaseC", package: "spfk-audio-base"),
+            ],
             publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("include_private"),

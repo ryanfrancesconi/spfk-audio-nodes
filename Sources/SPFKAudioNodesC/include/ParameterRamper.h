@@ -21,12 +21,22 @@ class ParameterRamper {
     std::atomic<int32_t> changeCounter;
     int32_t updateCounter = 0;
 
+    // Render thread only. While `automation` is set, each frame's value is the ramp combined with
+    // the next automation value: multiplied, or replaced by it.
+    const float *automation = nullptr;
+    AUAudioFrameCount automationIndex = 0;
+    bool automationMultiplies = false;
+    float lastValue = 0;
+
+    float combine(float base, float automated) const { return automationMultiplies ? base * automated : automated; }
+
     void setImmediate(float value) {
         // only to be called from the render thread or when resources are not
         // allocated.
         _goal = _uiValue = value;
         inverseSlope = 0.0;
         samplesRemaining = 0;
+        lastValue = value;
     }
 
   public:
@@ -92,13 +102,19 @@ class ParameterRamper {
 
     float getAndStep() {
         // Combines get and step. Saves a multiply-add when not ramping.
+        float value = _goal;
+
         if (samplesRemaining != 0) {
-            float value = get();
+            value = get();
             --samplesRemaining;
-            return value;
-        } else {
-            return _goal;
         }
+
+        if (automation) {
+            value = combine(value, automation[automationIndex++]);
+        }
+
+        lastValue = value;
+        return value;
     }
 
     void stepBy(AUAudioFrameCount n) {
@@ -111,7 +127,40 @@ class ParameterRamper {
         } else {
             samplesRemaining -= n;
         }
+
+        if (n == 0) return;
+
+        if (automation) {
+            automationIndex += n;
+            lastValue = combine(get(), automation[automationIndex - 1]);
+        } else {
+            lastValue = get();
+        }
     }
+
+    // MARK: - Automation (render thread)
+
+    /// Combines the next frames with `values`, one per frame from the start of this block.
+    void setAutomation(const float *values, bool multiplies) {
+        automation = values;
+        automationIndex = 0;
+        automationMultiplies = multiplies;
+    }
+
+    /// Ends automation, gliding from the last value rendered back to the ramp's goal.
+    void detachAutomation(AUAudioFrameCount glideFrames) {
+        automation = nullptr;
+
+        if (glideFrames == 0) return;
+
+        inverseSlope = (lastValue - _goal) / float(glideFrames);
+        samplesRemaining = glideFrames;
+    }
+
+    bool isAutomated() const { return automation != nullptr; }
+
+    /// The value of the last frame rendered or stepped over.
+    float getLastValue() const { return lastValue; }
 };
 
 #endif // __cplusplus

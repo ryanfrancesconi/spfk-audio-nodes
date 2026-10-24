@@ -23,7 +23,7 @@ bool canProcessInPlaceDSP(DSPRef pDSP);
 
 void setBufferDSP(DSPRef pDSP, AudioBufferList *buffer, size_t busIndex);
 
-void allocateRenderResourcesDSP(DSPRef pDSP, uint32_t channelCount, double sampleRate);
+void allocateRenderResourcesDSP(DSPRef pDSP, uint32_t channelCount, double sampleRate, uint32_t maximumFrames);
 void deallocateRenderResourcesDSP(DSPRef pDSP);
 
 void resetDSP(DSPRef pDSP);

@@ -92,6 +92,37 @@ enum GainRenderHarness {
     }
 }
 
+// MARK: - Automation
+
+extension GainRenderHarness {
+    /// Publishes `curve` on both gain parameters of `channelGain`.
+    static func publish(
+        _ curve: ParameterCurve,
+        on channelGain: ChannelGain,
+        anchor: TimelineAnchor = .sample(0),
+        sourceAnchor: Double = 0,
+        direction: TimelineMapping.Direction = .forward,
+        loop: Range<Double>? = nil,
+        combine: AutomationCombine = .multiply
+    ) throws {
+        let unit = try #require(channelGain.avAudioNode.auAudioUnit as? SPFKAudioUnit)
+        let mapping = try TimelineMapping(
+            renderAnchor: anchor, sourceAnchor: sourceAnchor, direction: direction, loop: loop, renderSampleRate: sampleRate
+        )
+        unit.publishAutomation(
+            [ChannelGainParameter.leftGain.rawValue: curve, ChannelGainParameter.rightGain.rawValue: curve],
+            mapping: mapping,
+            combine: combine
+        )
+    }
+
+    /// Stops `channelGain`'s automation.
+    static func stopAutomation(on channelGain: ChannelGain) throws {
+        let unit = try #require(channelGain.avAudioNode.auAudioUnit as? SPFKAudioUnit)
+        unit.publishAutomation([:], mapping: try TimelineMapping(renderAnchor: .atAdoption, sourceAnchor: 0, renderSampleRate: sampleRate), combine: .multiply)
+    }
+}
+
 // MARK: - Measures
 
 /// The largest absolute difference between two curves, where it occurs, and the dB error there.

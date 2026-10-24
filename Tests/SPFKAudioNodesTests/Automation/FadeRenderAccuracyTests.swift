@@ -50,7 +50,7 @@ final class FadeRenderAccuracyTests: TestCaseModel {
             [0.1, 0.5, 2, 10].flatMap { seconds in Direction.allCases.map { (taper, seconds, $0) } }
         }
 
-    /// Played and rendered fades differ only by their sampling into linear segments.
+    /// A played fade is the rendered fade, frame for frame.
     @Test(arguments: samplingCases)
     func playedFadeMatchesRenderedFade(taper: Int, seconds: TimeInterval, direction: Direction) async throws {
         let shape = try #require(AudioTaper.preset(at: taper))
@@ -60,12 +60,11 @@ final class FadeRenderAccuracyTests: TestCaseModel {
 
         let input = try GainRenderHarness.makeDC(seconds: seconds + 0.1)
         let duration = Double(input.frameLength) / rate
-        let live = liveFade(fade, regionDuration: duration)
+        let curve = try fade.curve(regionDuration: duration)
 
         let output = try await GainRenderHarness.render(
             input, blockSize: 512,
-            configure: { $0.gain = live.initialGain },
-            started: { try $0.automate(events: live.events, startTime: GainRenderHarness.renderStart) }
+            started: { try GainRenderHarness.publish(curve, on: $0) }
         )
 
         let rendered = try GainRenderHarness.channels(
@@ -73,22 +72,10 @@ final class FadeRenderAccuracyTests: TestCaseModel {
         )
 
         let error = CurveError(output[0], rendered[0])
-        reportMeasure("sampling taper=\(taper) \(seconds)s \(direction.rawValue)", "\(error), \(live.events.count) events")
+        reportMeasure("sampling taper=\(taper) \(seconds)s \(direction.rawValue)", "\(error)")
 
-        withKnownIssue("piecewise-linear sampling: \(error)") {
-            #expect(error.maxAbs <= 1e-4, "\(error)")
-        } when: {
-            Self.knownSamplingFailures.contains("\(taper)-\(seconds)-\(direction.rawValue)")
-        }
+        #expect(error.maxAbs <= 1e-6, "\(error)")
     }
-
-    /// Measured 2026-10-24 against `spfk-audio-nodes` 4523986. Every curved preset, at every
-    /// length. The linear preset matches now that the render evaluates frame i at i / n.
-    static let knownSamplingFailures: Set<String> = Set(
-        [0, 2].flatMap { taper in
-            ["0.1", "0.5", "2.0", "10.0"].flatMap { seconds in Direction.allCases.map { "\(taper)-\(seconds)-\($0.rawValue)" } }
-        }
-    )
 
     // MARK: - Starting mid-fade (fact 3)
 
@@ -112,16 +99,12 @@ final class FadeRenderAccuracyTests: TestCaseModel {
             position = 2.5
         }
 
-        let live = liveFade(fade, regionDuration: regionDuration, position: position)
+        let curve = try fade.curve(regionDuration: regionDuration)
         let input = try GainRenderHarness.makeDC(seconds: 1)
 
-        // As `applyStoredFadeAutomation`: the gain set with the engine running, then the events.
         let output = try await GainRenderHarness.render(
             input, blockSize: 512,
-            started: {
-                $0.gain = live.initialGain
-                try $0.automate(events: live.events, startTime: GainRenderHarness.renderStart)
-            }
+            started: { try GainRenderHarness.publish(curve, on: $0, sourceAnchor: position) }
         )
 
         let window = Int(0.25 * rate)
@@ -136,17 +119,9 @@ final class FadeRenderAccuracyTests: TestCaseModel {
                    measured[0], exact[0], step.step, step.frame) + error.description
         )
 
-        withKnownIssue("crop opens one segment ahead: \(error)") {
-            #expect(error.maxAbs <= 1e-3, "\(error)")
-        } when: {
-            Self.knownCropFailures.contains("\(taper)-\(direction.rawValue)")
-        }
+        #expect(error.maxAbs <= 1e-6, "\(error)")
+        #expect(abs(measured[0] - exact[0]) <= 1e-6, "opens at \(measured[0]), exact \(exact[0])")
     }
-
-    /// Measured 2026-10-24 against `spfk-audio-nodes` 4523986: every preset in both directions.
-    static let knownCropFailures: Set<String> = Set(
-        AudioTaper.presets.indices.flatMap { taper in Direction.allCases.map { "\(taper)-\($0.rawValue)" } }
-    )
 
     // MARK: - A set during automation (fact 6)
 
