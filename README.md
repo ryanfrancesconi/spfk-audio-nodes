@@ -12,12 +12,12 @@ Extracted from [SPFKAudioWorkspace](https://github.com/ryanfrancesconi/spfk-audi
 
 | Type | Description |
 |------|-------------|
-| **`ChannelGain`** | A stereo gain and channel-operation audio unit: independent left/right gain, swap, mono mixdown, mid/side decode and encode, dB conversion, parameter automation |
-| **`NodeParameter`** / **`Parameter`** / **`NodeParameterDef`** | An `AUParameter` wrapped with safe optional access, clamping, ramping and automation recording |
+| **`ChannelGain`** | A stereo gain and channel-operation audio unit: independent left/right gain, swap, mono mixdown, mid/side decode and encode, dB conversion, and its `automation` |
+| **`NodeAutomation`** | A node's automation: publishes `ParameterCurve`s against a `TimelineMapping`, ramps, and reads back what each parameter rendered |
+| **`AutomationRecorder`** | Records a parameter's writes with their host times and merges them into a curve |
+| **`NodeParameter`** / **`Parameter`** / **`NodeParameterDef`** | An `AUParameter` wrapped with safe optional access, clamping and the touch gesture |
 | **`NodeParameterType`** | What a parameter is, for a node declaring its own |
-| **`AutomationCurve`** / **`AutomationPoint`** | Curved automation over any time-varying parameter, converted to the linear ramps DSP consumes |
-| **`ParameterAutomationTiming`** | When an automation run is anchored |
-| **`RegionFadeDescription`** | Fade in and out curves over a region of a timeline |
+| **`AutomationPoint`** | A UI automation point; `ParameterCurve(points:taper:)` builds track automation from them |
 | **`FilePlayer`** | Single-file playback with editable ranges and sample-accurate scheduling |
 | **`StreamPlayer`** / **`StreamPlayerEvent`** | Buffer-queue playback for containers `AVAudioFile` cannot open |
 | **`TransportSourcePlayer`** | The surface a transport drives, whether the audio came from a file or a stream |
@@ -43,6 +43,20 @@ anything wider would have to be honored twice. Both conformers drive an `AVAudio
 everything below the seam — the sample-accurate start, the playhead, the completion callbacks — is
 one piece of machinery rather than two implementations of it.
 
+## Automation
+
+A node's automation is one immutable snapshot of curves and a `TimelineMapping`, published with
+`NodeAutomation.publish` and adopted by the render thread with one atomic exchange at the start of a
+block. Every parameter's value is evaluated exactly per frame, through the same C function
+`ParameterCurve.value(at:)` runs, so what is drawn and exported is what plays. Publishing replaces
+the node's whole automation: a parameter cannot be automated twice. A curve multiplies the
+parameter's own value or replaces it, and while replacing, `AutomationMode` decides who wins a
+touched parameter. Any `DSPBase` subclass whose `process` reads its rampers is automated with no
+code of its own.
+
+The mapping is anchored to a render sample, a host time bound on the render thread, or the adopting
+block. A loop is its wrap, so a loop of any length and any number of iterations is one publish.
+
 ## Looping either source
 
 `enqueueRepeat` queues a pass after whatever is already scheduled. `AVAudioPlayerNode` plays a
@@ -57,7 +71,7 @@ loop and that first partial pass is not what repeats.
 - **SPFKAudioBase** - Audio type definitions and format utilities
 - **SPFKAUHost** - Audio unit hosting and component discovery
 - **SPFKUtils** - General extensions (AUValue dB conversion, etc.)
-- **SPFKAudioNodesC** - C/C++ companion target for DSP kernels and parameter automation render observers
+- **SPFKAudioNodesC** - C/C++ companion target for DSP kernels and the render-thread automation scheduler, evaluating through **SPFKAudioBaseC**
 
 ## Requirements
 
