@@ -126,6 +126,10 @@ public final class Metronome: @unchecked Sendable {
         // - memset/memcpy are C functions with no Swift runtime overhead.
         // No swift_allocObject, no objc_msgSend, no autorelease pools.
         sourceNode = AVAudioSourceNode(format: format) { isSilence, timestamp, frameCount, outputData in
+            // Read out of the pointer first: `withLock` takes a `@Sendable` closure.
+            let hostTime = timestamp.pointee.mHostTime
+            let isHostTimeValid = timestamp.pointee.mFlags.contains(.hostTimeValid)
+
             // Snapshot all mutable state and advance the sample counter in a single lock
             // acquisition, so the lock is not held during the per-frame loop below and a `play`
             // landing mid-render is never overwritten by this render's advance.
@@ -133,9 +137,8 @@ public final class Metronome: @unchecked Sendable {
                 // A start at a host time: silent until it, or advanced by the frames it has missed.
                 var startFrame: Int64 = 0
                 if state.isPlaying, let startHostTime = state.startHostTime {
-                    let hostTime = timestamp.pointee.mHostTime
                     let ticks = startHostTime >= hostTime ? Double(startHostTime - hostTime) : -Double(hostTime - startHostTime)
-                    let offset = timestamp.pointee.mFlags.contains(.hostTimeValid) ? Int64((ticks * framesPerHostTick).rounded()) : 0
+                    let offset = isHostTimeValid ?Int64((ticks * framesPerHostTick).rounded()) : 0
 
                     if offset >= Int64(frameCount) {
                         startFrame = Int64(frameCount)
