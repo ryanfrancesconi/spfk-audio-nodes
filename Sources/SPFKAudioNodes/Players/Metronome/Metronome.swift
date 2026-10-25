@@ -40,6 +40,8 @@ public final class Metronome: @unchecked Sendable {
         var isMuted: Bool = false
         var isPlaying: Bool = false
         var samplePosition: Int64 = 0
+        /// The host time `samplePosition` is heard at, until the render that reaches it.
+        var startHostTime: UInt64?
     }
 
     private let state = State()
@@ -104,6 +106,10 @@ public final class Metronome: @unchecked Sendable {
 
         let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
 
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        let framesPerHostTick = sampleRate * Double(timebase.numer) / Double(timebase.denom) / 1e9
+
         // Capture the state object and sample arrays — not `self`.
         let state = state
 
@@ -119,14 +125,30 @@ public final class Metronome: @unchecked Sendable {
         // - All arithmetic uses stack-local scalars and UnsafePointer math.
         // - memset/memcpy are C functions with no Swift runtime overhead.
         // No swift_allocObject, no objc_msgSend, no autorelease pools.
-        sourceNode = AVAudioSourceNode(format: format) { isSilence, _, frameCount, outputData in
+        sourceNode = AVAudioSourceNode(format: format) { isSilence, timestamp, frameCount, outputData in
             // Snapshot all mutable state and advance the sample counter in a single lock
             // acquisition, so the lock is not held during the per-frame loop below and a `play`
             // landing mid-render is never overwritten by this render's advance.
-            let (bpm, beatsPerBar, subdivisions, isMuted, isPlaying, samplePosition): (Double, Int, Int, Bool, Bool, Int64) = state.lock.withLock {
-                let snapshot = (state.bpm, state.beatsPerBar, state.subdivisions, state.isMuted, state.isPlaying, state.samplePosition)
+            let (bpm, beatsPerBar, subdivisions, isMuted, isPlaying, samplePosition, startFrame): (Double, Int, Int, Bool, Bool, Int64, Int64) = state.lock.withLock {
+                // A start at a host time: silent until it, or advanced by the frames it has missed.
+                var startFrame: Int64 = 0
+                if state.isPlaying, let startHostTime = state.startHostTime {
+                    let hostTime = timestamp.pointee.mHostTime
+                    let ticks = startHostTime >= hostTime ? Double(startHostTime - hostTime) : -Double(hostTime - startHostTime)
+                    let offset = timestamp.pointee.mFlags.contains(.hostTimeValid) ? Int64((ticks * framesPerHostTick).rounded()) : 0
+
+                    if offset >= Int64(frameCount) {
+                        startFrame = Int64(frameCount)
+                    } else {
+                        state.startHostTime = nil
+                        startFrame = max(0, offset)
+                        state.samplePosition -= min(0, offset)
+                    }
+                }
+
+                let snapshot = (state.bpm, state.beatsPerBar, state.subdivisions, state.isMuted, state.isPlaying, state.samplePosition, startFrame)
                 if state.isPlaying, state.bpm > 0 {
-                    state.samplePosition += Int64(frameCount)
+                    state.samplePosition += Int64(frameCount) - startFrame
                 }
                 return snapshot
             }
@@ -137,7 +159,7 @@ public final class Metronome: @unchecked Sendable {
             // uninitialized memory, so we must write zeros explicitly;
             // setting isSilence alone is only a hint and doesn't guarantee
             // the engine will clear the buffers for us.
-            guard isPlaying, bpm > 0 else {
+            guard isPlaying, bpm > 0, startFrame < Int64(frameCount) else {
                 for buffer in ablPointer {
                     if let data = buffer.mData {
                         memset(data, 0, Int(buffer.mDataByteSize))
@@ -176,8 +198,12 @@ public final class Metronome: @unchecked Sendable {
             // out which click we're in and how far into that click's sample data
             // we are, then write the corresponding sample (or silence if past
             // the end of the click waveform).
-            for frame in 0 ..< Int(frameCount) {
-                let pos = samplePosition + Int64(frame)
+            for frame in 0 ..< Int(startFrame) {
+                ch0Ptr[frame] = 0
+            }
+
+            for frame in Int(startFrame) ..< Int(frameCount) {
+                let pos = samplePosition + Int64(frame) - startFrame
 
                 // Which click number we're on (monotonically increasing).
                 let clickIndex = Int(Double(pos) / samplesPerClick)
@@ -223,6 +249,7 @@ public final class Metronome: @unchecked Sendable {
     public func play() {
         state.lock.withLock {
             state.samplePosition = 0
+            state.startHostTime = nil
             state.isPlaying = true
         }
     }
@@ -231,6 +258,7 @@ public final class Metronome: @unchecked Sendable {
     public func play(time: TimeInterval) {
         state.lock.withLock {
             state.samplePosition = Int64(time * sampleRate)
+            state.startHostTime = nil
             state.isPlaying = true
         }
     }
@@ -239,9 +267,20 @@ public final class Metronome: @unchecked Sendable {
     ///
     /// - Parameter beatOffset: The beat position to start from (0-based).
     public func play(fromBeat beatOffset: Double) {
+        play(fromBeat: beatOffset, startHostTime: nil)
+    }
+
+    /// As ``play(fromBeat:)``, with the beat heard at `hostTime`: silent until then, or joined on
+    /// its grid when that time has already passed.
+    public func play(fromBeat beatOffset: Double, atHostTime hostTime: UInt64) {
+        play(fromBeat: beatOffset, startHostTime: hostTime)
+    }
+
+    private func play(fromBeat beatOffset: Double, startHostTime: UInt64?) {
         state.lock.withLock {
             let samplesPerBeat = sampleRate * 60.0 / state.bpm
             state.samplePosition = Int64(beatOffset * samplesPerBeat)
+            state.startHostTime = startHostTime
             state.isPlaying = true
         }
     }
