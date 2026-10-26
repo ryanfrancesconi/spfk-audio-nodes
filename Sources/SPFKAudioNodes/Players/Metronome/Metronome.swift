@@ -302,6 +302,7 @@ public final class Metronome: @unchecked Sendable {
     private static func extractSamples(from buffer: AVAudioPCMBuffer) -> [Float] {
         guard let channelData = buffer.floatChannelData else { return [] }
         let frameCount = Int(buffer.frameLength)
+        // Deinterleaved: `MetronomeSoundSet` reads into `AVAudioFile.processingFormat`, which always is.
         return Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
     }
 }
