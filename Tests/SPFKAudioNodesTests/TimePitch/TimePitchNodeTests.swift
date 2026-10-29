@@ -38,7 +38,7 @@ final class TimePitchNodeTests: TestCaseModel {
 
     @Test func scheduledParameterEventTakesEffect() async throws {
         let rig = try await TimePitchRig()
-        let schedule = try #require(rig.timePitch.avAudioNode.auAudioUnit.scheduleParameterBlock)
+        let schedule = rig.timePitch.avAudioNode.auAudioUnit.scheduleParameterBlock
         schedule(AUEventSampleTimeImmediate, 0, TimePitchParameter.rate.rawValue, 0.75)
 
         _ = try rig.render(frames: 512)
