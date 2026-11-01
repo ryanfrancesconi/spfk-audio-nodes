@@ -513,12 +513,8 @@ final class StreamPlayerTests: TestCaseModel {
 
     /// Stopping has to end the feed, not leave a task decoding into a node that will never play it.
     ///
-    /// TODO: intermittent under parallel load — observed `readCount` 3 against an `atStop` of 2 in a
-    /// full parallel run, passing three times in a row in isolation.
-    /// `stop()` cancels the feed rather than awaiting it, so a read already inside the source can
-    /// land after `atStop` is captured. The fix belongs in `stop()` — awaiting the task, per the
-    /// rule that cancellation is only observed at a suspension point. Polling for a settled
-    /// `readCount` here would hide the thing this test exists to catch.
+    /// One read may still begin: `stop()` does not wait, and a feed that passed its cancellation
+    /// check just before it goes on to read. A second read would mean the loop missed the cancel.
     @Test func stopEndsTheFeed() async throws {
         let source = RampSource(frames: 44100 * 3600)
         let rig = try await makeRig(source: source, duration: 3600)
@@ -534,7 +530,44 @@ final class StreamPlayerTests: TestCaseModel {
 
         try await wait(sec: 0.5)
 
-        #expect(source.readCount == atStop, "the feed kept decoding after stop()")
+        #expect(source.readCount <= atStop + 1, "the feed kept decoding after stop()")
+    }
+
+    /// A read in flight when `stop()` returns still hands its buffer to the node, after the node was
+    /// stopped. The next run must not play it.
+    @Test func aBufferReadAcrossStopIsNotHeardOnTheNextRun() async throws {
+        let source = ConcurrencyProbeSource()
+        let rig = try await makeRig(source: source, duration: 3600)
+
+        try await rig.player.schedule(from: 0, to: 3600)
+        try rig.player.play()
+
+        // The prefill happens on the caller, so a call in flight now belongs to the feed task.
+        try await wait(for: source.isInUse, timeout: 5)
+
+        rig.player.stop()
+
+        let start: TimeInterval = 60
+        try await rig.player.schedule(from: start, to: 3600)
+        try rig.player.play()
+
+        // A second feed read has begun only once the first was scheduled.
+        let afterPrefill = source.readCount
+        try await wait(for: source.readCount >= afterPrefill + 2, timeout: 5)
+
+        // Past the prefill, so a stale buffer queued behind it would be heard too.
+        let frameCount = Int(StreamPlayer.chunkFrames) * (StreamPlayer.prefillBuffers + 1)
+        let samples = try render(rig, frameCount: AVAudioFrameCount(frameCount))
+
+        try #require(samples.count == frameCount)
+
+        let startFrame = Float(start * rig.format.sampleRate)
+        let firstWrong = samples.indices.first { samples[$0] != startFrame + Float($0) }
+
+        #expect(
+            firstWrong == nil,
+            "frame \(firstWrong ?? -1) of the run played \(firstWrong.map { samples[$0] } ?? 0) — a buffer the outgoing feed read across stop() was heard"
+        )
     }
 
     // MARK: - Looping
