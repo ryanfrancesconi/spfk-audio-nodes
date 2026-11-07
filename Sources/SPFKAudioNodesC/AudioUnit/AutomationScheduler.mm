@@ -11,7 +11,7 @@
 
 // MARK: - C entry points
 
-void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long laneCount, SPFKTimelineMapping mapping,
+void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long laneCount, TimelineMappingC mapping,
                           DSPAutomationAnchor anchor, const DSPRateChange *changes, long changeCount, bool glides) {
     auto snapshot = new AutomationSnapshot{{}, mapping, anchor, {}, {}, glides};
     snapshot->lanes.reserve(laneCount);
@@ -26,7 +26,7 @@ void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long lane
         if (lane.segmentCount <= 0 || lane.segments == nullptr) continue;
 
         snapshot->lanes.push_back({lane.address, lane.multiplies, lane.mode,
-                                   std::vector<SPFKCurveSegment>(lane.segments, lane.segments + lane.segmentCount)});
+                                   std::vector<CurveSegmentC>(lane.segments, lane.segments + lane.segmentCount)});
     }
 
     pDSP->automation.publish(snapshot);
@@ -182,8 +182,8 @@ void AutomationScheduler::beginBlock(const AudioTimeStamp *timestamp, AUAudioFra
 
 void AutomationScheduler::foldChanges(int64_t throughSample) {
     while (nextChange < current->changes.size() && current->changeSamples[nextChange] <= throughSample) {
-        activeMapping = spfk_timeline_fold(&activeMapping, current->changeSamples[nextChange],
-                                           current->changes[nextChange].rate);
+        activeMapping = timelineFold(&activeMapping, current->changeSamples[nextChange],
+                                     current->changes[nextChange].rate);
         ++nextChange;
     }
 }
@@ -192,7 +192,7 @@ void AutomationScheduler::fill(const AutomationLane &lane, int parameter, int64_
                                AUAudioFrameCount frames, float *values) {
     // Every lane splits at the same changes, so each starts from the block's mapping and only
     // `foldChanges` advances it.
-    SPFKTimelineMapping mapping = activeMapping;
+    TimelineMappingC mapping = activeMapping;
     size_t change = nextChange;
     AUAudioFrameCount done = 0;
 
@@ -203,7 +203,7 @@ void AutomationScheduler::fill(const AutomationLane &lane, int parameter, int64_
             int64_t offset = current->changeSamples[change] - (firstSample + done);
 
             if (offset <= 0) {
-                mapping = spfk_timeline_fold(&mapping, current->changeSamples[change], current->changes[change].rate);
+                mapping = timelineFold(&mapping, current->changeSamples[change], current->changes[change].rate);
                 ++change;
                 continue;
             }
@@ -211,7 +211,7 @@ void AutomationScheduler::fill(const AutomationLane &lane, int parameter, int64_
             if (offset < int64_t(run)) run = AUAudioFrameCount(offset);
         }
 
-        spfk_fill_automation(lane.segments.data(), long(lane.segments.size()), &mapping, firstSample + done, run,
+        AutomationFill::fill(lane.segments.data(), long(lane.segments.size()), &mapping, firstSample + done, run,
                              &cursor[parameter], values + done);
         done += run;
     }
@@ -235,7 +235,7 @@ void AutomationScheduler::adopt(AutomationSnapshot *snapshot, const AudioTimeSta
 
         const AutomationLane &outgoing = current->lanes[lane];
         float value;
-        spfk_fill_automation(outgoing.segments.data(), long(outgoing.segments.size()), &activeMapping, firstSample, 1,
+        AutomationFill::fill(outgoing.segments.data(), long(outgoing.segments.size()), &activeMapping, firstSample, 1,
                              &cursor[parameter], &value);
 
         if (glideRemaining[parameter] > 0) {

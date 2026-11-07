@@ -16,7 +16,7 @@ extension SPFKAudioUnit {
         glides: Bool
     ) {
         let entries = curves.sorted { $0.key < $1.key }
-        var flat: [SPFKCurveSegment] = []
+        var flat: [CurveSegmentC] = []
         var ranges: [(address: AUParameterAddress, offset: Int, count: Int)] = []
 
         for (address, curve) in entries {
@@ -53,7 +53,7 @@ extension SPFKAudioUnit {
 
     /// Ends this unit's automation; each parameter returns to its own value over 20 ms.
     func stopAutomation() {
-        let mapping = SPFKTimelineMapping(
+        let mapping = TimelineMappingC(
             renderAnchor: 0, sourceAnchor: 0, rate: 1, direction: 1, loopStart: 0, loopEnd: 0, renderSampleRate: 1
         )
         let anchor = DSPAutomationAnchor(kind: .atAdoption, sampleTime: 0, hostTime: 0)

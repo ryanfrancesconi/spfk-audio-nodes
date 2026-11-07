@@ -15,14 +15,14 @@ struct AutomationLane {
     AUParameterAddress address;
     bool multiplies;
     DSPAutomationMode mode;
-    std::vector<SPFKCurveSegment> segments;
+    std::vector<CurveSegmentC> segments;
 };
 
 /// One published state of a node's automation. Immutable once published, except the anchors the
 /// render thread binds on adoption.
 struct AutomationSnapshot {
     std::vector<AutomationLane> lanes;
-    SPFKTimelineMapping mapping;
+    TimelineMappingC mapping;
     DSPAutomationAnchor anchor;
     std::vector<DSPRateChange> changes;
     std::vector<int64_t> changeSamples;
@@ -71,7 +71,7 @@ class AutomationScheduler {
     AutomationSnapshot *current = nullptr;
 
     // Render thread: the current snapshot's mapping folded through every change already reached.
-    SPFKTimelineMapping activeMapping{};
+    TimelineMappingC activeMapping{};
     size_t nextChange = 0;
 
     AutomationSnapshot *retired[retireCapacity] = {};

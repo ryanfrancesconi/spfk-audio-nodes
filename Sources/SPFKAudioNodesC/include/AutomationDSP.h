@@ -4,7 +4,8 @@
 
 #import <AudioToolbox/AudioToolbox.h>
 
-#include <SPFKCurve.h>
+#include <CurveSegmentC.h>
+#include <TimelineMappingC.h>
 
 #import "DSPBase.h"
 
@@ -48,7 +49,7 @@ typedef struct DSPAutomationLane {
     AUParameterAddress address;
     bool multiplies;
     DSPAutomationMode mode;
-    const SPFKCurveSegment *segments;
+    const CurveSegmentC *segments;
     long segmentCount;
 } DSPAutomationLane;
 
@@ -74,7 +75,7 @@ CF_EXTERN_C_BEGIN
 /// Replaces the node's whole automation with `lanes` against `mapping`, folded at each of `changes` in
 /// order; no lanes stops it. With `glides`, a parameter already automated glides from its running value
 /// over 20 ms; without, it starts on its curve. Copies everything it is given. Call from one thread only.
-void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long laneCount, SPFKTimelineMapping mapping,
+void publishAutomationDSP(DSPRef pDSP, const DSPAutomationLane *lanes, long laneCount, TimelineMappingC mapping,
                           DSPAutomationAnchor anchor, const DSPRateChange *changes, long changeCount, bool glides);
 
 /// Frees snapshots the render thread has finished with. Call from the publishing thread.
