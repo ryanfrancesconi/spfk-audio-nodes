@@ -1,7 +1,6 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
 
-#ifndef TimePitchDSP_h
-#define TimePitchDSP_h
+#pragma once
 
 #import "DSPBase.h"
 #import <AudioToolbox/AUParameters.h>
@@ -54,5 +53,3 @@ double holdStartUntilSampleTimeTimePitchDSP(DSPRef pDSP, double sampleTime);
 void holdStartUntilHostTimeTimePitchDSP(DSPRef pDSP, uint64_t hostTime);
 
 CF_EXTERN_C_END
-
-#endif // !TimePitchDSP_h

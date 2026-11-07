@@ -1,7 +1,6 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-audio-nodes
 
-#ifndef ChannelGainDSP_h
-#define ChannelGainDSP_h
+#pragma once
 
 #import "DSPBase.h"
 #import <AudioToolbox/AUParameters.h>
@@ -38,5 +37,3 @@ CF_EXTERN_C_BEGIN
 void setOperationStateChannelGainDSP(DSPRef pDSP, ChannelGainOperationState state);
 
 CF_EXTERN_C_END
-
-#endif // !ChannelGainDSP_h
