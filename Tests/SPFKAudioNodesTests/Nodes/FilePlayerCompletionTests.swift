@@ -112,11 +112,39 @@ final class FilePlayerCompletionTests: TestCaseModel {
 
         peaks.withLock { $0.removeAll() }
 
+        // DIAGNOSTIC (temporary)
+        let configChanges = OSAllocatedUnfairLock(initialState: 0)
+        let observer = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: rig.engine, queue: nil
+        ) { _ in configChanges.withLock { $0 += 1 } }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let t0 = Date()
+
         try rig.player.schedule(from: 2, to: 3) { second.withLock { $0 += 1 } }
+        let tScheduled = Date().timeIntervalSince(t0)
         try rig.player.play()
+        let tPlayed = Date().timeIntervalSince(t0)
 
         let reported = try await wait { second.withLock { $0 } == 1 }
-        try #require(reported, "the second run never reported completion")
+        var diag = ""
+        if !reported {
+            let p = peaks.withLock { $0 }
+            let node = rig.player.playerNode
+            let nodeTime = node.lastRenderTime
+            let playerTime = nodeTime.flatMap { node.playerTime(forNodeTime: $0) }
+            let device = rig.engine.outputNode.outputFormat(forBus: 0)
+            diag = """
+            DIAG FilePlayerCompletionTests: engineRunning=\(rig.engine.isRunning) \
+            configChanges=\(configChanges.withLock { $0 }) nodeIsPlaying=\(node.isPlaying) \
+            scheduleTook=\(tScheduled) playTook=\(tPlayed) \
+            playerSampleTime=\(playerTime.map { String($0.sampleTime) } ?? "nil") \
+            nodeRenderValid=\(nodeTime?.isSampleTimeValid ?? false) \
+            tapBuffers=\(p.count) maxPeak=\(p.max() ?? -1) secondRunBuffers=\(p.filter { $0 > 0.25 }.count) \
+            first=\(first.withLock { $0 }) output=\(device)
+            """
+            print(diag)
+        }
+        try #require(reported, "the second run never reported completion \(diag)")
 
         #expect(first.withLock { $0 } == 0, "a superseded run reported itself as played to the end")
         #expect(second.withLock { $0 } == 1)
