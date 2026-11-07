@@ -30,7 +30,7 @@ final class TimePitchHeldStartReports: TestCaseModel {
         _ = try rig.render(frames: 20 * 512)
         let now = rig.engine.manualRenderingSampleTime
         let heard = now + rig.latencyFrames(atRate: rate) + 1000
-        rig.player.scheduleBuffer(try TimePitchRig.makeBuffer(source.map { Array($0[start...]) }), completionHandler: nil)
+        rig.player.enqueue(try TimePitchRig.makeBuffer(source.map { Array($0[start...]) }))
         try rig.startHeld(heardAt: heard, rate: rate)
         let live = try rig.render(frames: Int(heard - now) + baselineAt + window + 960)
 

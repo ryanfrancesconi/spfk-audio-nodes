@@ -83,7 +83,7 @@ final class TimePitchRig {
 
     /// Renders `frames` from a fresh play of `input`.
     func play(_ input: AVAudioPCMBuffer, frames: Int) throws -> [[Float]] {
-        player.scheduleBuffer(input, completionHandler: nil)
+        player.enqueue(input)
         player.play()
         return try render(frames: frames)
     }

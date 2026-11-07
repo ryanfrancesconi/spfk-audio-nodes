@@ -53,7 +53,7 @@ final class ChannelGainChannelOperationTests: TestCaseModel {
         try engine.start()
         defer { engine.stop() }
 
-        player.scheduleBuffer(input, completionHandler: nil)
+        player.enqueue(input)
         player.play()
 
         let output = try #require(AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat, frameCapacity: frameCount))

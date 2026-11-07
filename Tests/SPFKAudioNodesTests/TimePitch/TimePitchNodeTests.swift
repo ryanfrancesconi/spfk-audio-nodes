@@ -80,7 +80,7 @@ final class TimePitchNodeTests: TestCaseModel {
     @Test func qualitySwapsAtTheNextBlock() async throws {
         let rig = try await TimePitchRig { $0.rate = 0.75 }
         let input = try TimePitchRig.makeNoise(frames: 48000)
-        rig.player.scheduleBuffer(input, completionHandler: nil)
+        rig.player.enqueue(input)
         rig.player.play()
         _ = try rig.render(frames: 4096)
 

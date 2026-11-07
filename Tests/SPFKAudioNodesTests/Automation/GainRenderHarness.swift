@@ -70,7 +70,7 @@ enum GainRenderHarness {
         try engine.start()
         defer { engine.stop() }
 
-        player.scheduleBuffer(input, completionHandler: nil)
+        player.enqueue(input)
         player.play()
         try started(channelGain)
 

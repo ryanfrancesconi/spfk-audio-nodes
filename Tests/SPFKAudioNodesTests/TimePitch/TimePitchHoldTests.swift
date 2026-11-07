@@ -25,7 +25,7 @@ final class TimePitchHoldTests: TestCaseModel {
 
     private func schedule(on rig: TimePitchRig) throws {
         let input = try TimePitchRig.makeClicks(frames: Int(sampleRate), every: clickSpacing, first: clickSpacing / 2)
-        rig.player.scheduleBuffer(input, at: AVAudioTime(sampleTime: 0, atRate: sampleRate), completionHandler: nil)
+        rig.player.enqueue(input, at: AVAudioTime(sampleTime: 0, atRate: sampleRate))
     }
 
     /// The worst distance of each click from `heard + p / rate`, over `output` rendered from `renderedFrom`.

@@ -88,8 +88,8 @@ final class TimePitchPullTests: TestCaseModel {
         let renderStart = Int(rig.engine.manualRenderingSampleTime)
         let heard = rig.latencyFrames(atRate: rate) + 1000 // the release mid-block
 
-        rig.player.scheduleBuffer(input, at: AVAudioTime(sampleTime: 0, atRate: sampleRate), completionHandler: nil)
-        rig.player.scheduleBuffer(input, at: nil, completionHandler: nil)
+        rig.player.enqueue(input, at: AVAudioTime(sampleTime: 0, atRate: sampleRate))
+        rig.player.enqueue(input)
         try rig.startHeld(heardAt: AVAudioFramePosition(renderStart) + heard, rate: rate)
 
         let output = try rig.render(frames: Int(heard) + Int(Double(2 * passFrames) / heardRate) + 2400)
@@ -116,7 +116,7 @@ final class TimePitchPullTests: TestCaseModel {
         let inLatency = Double(rig.timePitch.latency(atRate: 1) - rig.timePitch.latency(atRate: 2)) * 2 * sampleRate
         let latencyBefore = rig.timePitch.latency(atRate: 1) * sampleRate
 
-        rig.player.scheduleBuffer(input, completionHandler: nil)
+        rig.player.enqueue(input)
         rig.player.play()
         let output = try rig.render(frames: change + 4 * Int(sampleRate)) { rendered in
             if rendered == change { rig.timePitch.rate = 0.5 }
@@ -172,7 +172,7 @@ final class TimePitchPullTests: TestCaseModel {
         let ramp = 0.02 * sampleRate
         var pulledAtChange: Double = 0
 
-        rig.player.scheduleBuffer(input, completionHandler: nil)
+        rig.player.enqueue(input)
         rig.player.play()
         let output = try rig.render(frames: change + 4 * Int(sampleRate)) { rendered in
             guard rendered == change else { return }
