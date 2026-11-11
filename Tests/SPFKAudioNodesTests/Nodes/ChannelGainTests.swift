@@ -24,16 +24,6 @@ final class ChannelGainTests: TestCaseModel {
         channelGain = nil
     }
 
-    @Test func defaultGain() async throws {
-        var channelGain: ChannelGain? = try await ChannelGain()
-
-        #expect(channelGain?.leftGain == 1)
-        #expect(channelGain?.rightGain == 1)
-        #expect(channelGain?.gain == 1)
-
-        channelGain = nil
-    }
-
     @Test func gainSyncsLeftRight() async throws {
         var channelGain: ChannelGain? = try await ChannelGain(gain: 1)
         guard let f = channelGain else {

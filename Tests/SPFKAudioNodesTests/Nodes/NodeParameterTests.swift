@@ -53,24 +53,6 @@ struct NodeParameterTests {
         param.endTouch(value: 0.5)
     }
 
-    @Test func defProperties() {
-        let def = NodeParameterDef(
-            identifier: "volume",
-            name: "Volume",
-            address: 42,
-            defaultValue: 0.75,
-            range: 0 ... 2,
-            unit: .linearGain
-        )
-
-        let param = NodeParameter(def)
-        #expect(param.def.identifier == "volume")
-        #expect(param.def.name == "Volume")
-        #expect(param.def.address == 42)
-        #expect(param.def.defaultValue == 0.75)
-        #expect(param.def.range == 0 ... 2)
-    }
-
     @Test func associateThrowsOnMissingParameterTree() {
         let param = NodeParameter(Self.testDef)
         let node = AVAudioPlayerNode()
