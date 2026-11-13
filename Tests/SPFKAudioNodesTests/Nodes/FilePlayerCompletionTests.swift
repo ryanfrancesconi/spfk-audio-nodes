@@ -13,7 +13,7 @@ import Testing
 /// Who is told a run finished, when a second run supersedes the first.
 ///
 /// **A real output device, unlike the sibling suites.** `.dataPlayedBack` means the data reached
-/// one, so under `.offline` manual rendering these handlers never fire at all — measured: a segment
+/// one, so under `.offline` manual rendering these handlers never fire at all - measured: a segment
 /// rendered twice over still reported nothing, while the same schedule with `.dataRendered`
 /// reported once. A completion test on the offline rig passes without ever running the code it
 /// names. The mixer is muted so the run is silent, which the device does not care about.
@@ -152,7 +152,7 @@ final class FilePlayerCompletionTests: TestCaseModel {
         // The third second of the file, which is what the second run asked for. Anything below this
         // is the first run's tail still draining through the tap.
         let heardSecond = peaks.withLock { $0.contains { $0 > 0.25 } }
-        #expect(heardSecond, "the second run never played — its segment was cleared before it started")
+        #expect(heardSecond, "the second run never played - its segment was cleared before it started")
     }
 
     /// The fence does not suppress an ordinary completion.
@@ -201,8 +201,8 @@ final class FilePlayerCompletionTests: TestCaseModel {
     /// Releasing the player is not a completion either.
     ///
     /// The handlers capture the run fence rather than the player, so `deinit` superseding the run is
-    /// the only thing left that can suppress one. The node outlives the player here — the engine
-    /// holds it — so its pending segment is destroyed, and its handler called, after the player it
+    /// the only thing left that can suppress one. The node outlives the player here - the engine
+    /// holds it - so its pending segment is destroyed, and its handler called, after the player it
     /// belongs to is gone.
     @Test func aReleasedPlayerReportsNothing() async throws {
         let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)
@@ -254,7 +254,7 @@ final class FilePlayerCompletionTests: TestCaseModel {
         try #require(weakPlayer == nil, "the player outlived the release under test")
 
         // Mid-run, so the segment is still queued: detaching stops the node, which destroys that
-        // command and calls its handler — with the player already gone.
+        // command and calls its handler - with the player already gone.
         engine.stop()
         engine.detach(node)
 

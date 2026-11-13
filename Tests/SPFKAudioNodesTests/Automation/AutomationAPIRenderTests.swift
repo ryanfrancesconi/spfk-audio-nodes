@@ -11,8 +11,8 @@ import Testing
 
 @testable import SPFKAudioNodes
 
-/// The automation API no client in this workspace calls — ramps, track automation, recording and
-/// several observers — rendered offline.
+/// The automation API no client in this workspace calls - ramps, track automation, recording and
+/// several observers - rendered offline.
 @Suite(.tags(.engine, .automation), .serialized)
 final class AutomationAPIRenderTests: TestCaseModel {
     private let rate = GainRenderHarness.sampleRate

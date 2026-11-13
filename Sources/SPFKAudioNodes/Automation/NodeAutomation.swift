@@ -53,7 +53,7 @@ public final class NodeAutomation {
     /// Replaces the node's automation with `curves` against `mapping`.
     ///
     /// A parameter already automated glides from its running value to the new curve over 20 ms, so
-    /// an edit while playing cannot click. Pass `glides: false` for a new start — a play or a seek —
+    /// an edit while playing cannot click. Pass `glides: false` for a new start - a play or a seek -
     /// which should open on its curve: a stop and a play published before one block render as a
     /// replacement, not as a stop.
     public func publish(
@@ -103,7 +103,7 @@ public final class NodeAutomation {
         return Double(clock.frameCount) / clock.sampleRate
     }
 
-    /// How far ahead of the host clock the node renders, in seconds — a block's host time minus the
+    /// How far ahead of the host clock the node renders, in seconds - a block's host time minus the
     /// time it rendered, the largest of the last eight blocks; nil before a block has rendered.
     public var renderAheadDuration: TimeInterval? {
         let clock = unit.renderClock()

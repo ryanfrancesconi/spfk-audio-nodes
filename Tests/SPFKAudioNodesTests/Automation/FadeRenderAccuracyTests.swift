@@ -10,7 +10,7 @@ import Testing
 
 @testable import SPFKAudioNodes
 
-/// A fade as played, against the same fade as rendered to a file — offline, with an exact anchor,
+/// A fade as played, against the same fade as rendered to a file - offline, with an exact anchor,
 /// so only the curve, its sampling and its edges are measured.
 @Suite(.tags(.engine, .automation), .serialized)
 final class FadeRenderAccuracyTests: TestCaseModel {

@@ -11,7 +11,7 @@ import SPFKBase
 /// contexts: real-time playback via `@MainActor TransportPlayer`, and offline
 /// rendering via the `EngineRenderer` actor (whose `prerender`/`postrender`
 /// closures call `schedule()`, `play()`, and `stop()` synchronously).
-/// In practice access is serial — only one context drives the player at a time.
+/// In practice access is serial - only one context drives the player at a time.
 open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     // MARK: - Node
 
@@ -123,7 +123,7 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// Told to play and not since stopped, whatever the engine is doing.
     ///
     /// Every decision inside this class reads this rather than ``isPlaying``: the engine can stop
-    /// underneath a player at any time — AVFoundation does it on a configuration change — and a
+    /// underneath a player at any time - AVFoundation does it on a configuration change - and a
     /// `stop()` guarded on "is audio flowing" would then never clear the latch.
     public internal(set) var isPlaybackArmed: Bool = false
 
@@ -147,7 +147,7 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// Whether audio is actually being produced.
     ///
     /// A player node keeps reporting itself as playing after the engine stops, and so does the
-    /// latch — measured. A caller asking "is this playing" means audio, so this answers for the
+    /// latch - measured. A caller asking "is this playing" means audio, so this answers for the
     /// engine as well.
     public var isPlaying: Bool {
         isPlaybackArmed && playerNode.engine?.isRunning == true
@@ -172,7 +172,7 @@ open class FilePlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// Supersedes the run, so a handler that outlives the player cannot deliver its `onComplete`.
     ///
     /// The node does outlive it whenever an engine still holds it: the queued segment is destroyed
-    /// later, and destroying it calls the handler — which holds the run rather than the player.
+    /// later, and destroying it calls the handler - which holds the run rather than the player.
     /// Only that ordering. An engine released first stops the node while the player is still alive,
     /// and that completion is delivered, as it was before the handlers stopped capturing `self`.
     deinit {

@@ -12,8 +12,8 @@ import Testing
 
 /// A ramp: sample *n* is *n*, so any frame that comes out of the engine says which frame it is.
 ///
-/// Synthetic rather than a real decoder on purpose. What is under test is the scheduling — that the
-/// right frames reach the node, in order, from the position asked for — and a codec in the middle
+/// Synthetic rather than a real decoder on purpose. What is under test is the scheduling - that the
+/// right frames reach the node, in order, from the position asked for - and a codec in the middle
 /// would only add a way for the test to fail for reasons that are not that. The real decoder is
 /// exercised where it lives, in `spfk-audio-conversion`.
 ///
@@ -87,7 +87,7 @@ private final class RampSource: @unchecked Sendable, SeekablePCMSource {
 /// Reports whether more than one caller was ever inside it at once.
 ///
 /// ``SeekablePCMSource`` allows exactly one consumer and nothing enforces it, so an overlap is not a
-/// wrong sample — it is a decode against a reader another thread is tearing down. The read is slowed
+/// wrong sample - it is a decode against a reader another thread is tearing down. The read is slowed
 /// deliberately so the window is wide enough to land in on purpose rather than by luck.
 private final class ConcurrencyProbeSource: @unchecked Sendable, SeekablePCMSource {
     let processingFormat: AVAudioFormat
@@ -172,7 +172,7 @@ private final class ConcurrencyProbeSource: @unchecked Sendable, SeekablePCMSour
 }
 
 /// Offline manual rendering throughout: it needs no audio hardware and, more usefully, it is
-/// deterministic — the engine renders exactly the frames asked for, so "which frame came out" is a
+/// deterministic - the engine renders exactly the frames asked for, so "which frame came out" is a
 /// question with one answer.
 @Suite(.tags(.engine), .serialized)
 final class StreamPlayerTests: TestCaseModel {
@@ -236,7 +236,7 @@ final class StreamPlayerTests: TestCaseModel {
     private func waitForBuffers(_ player: StreamPlayer) async throws {
         try await wait(for: player.playerNode.isPlaying, timeout: 5)
 
-        // `isPlaying` says the node was started, not that the pump has filled its queue — that runs
+        // `isPlaying` says the node was started, not that the pump has filled its queue - that runs
         // on the feed queue and is asynchronous by design.
         try await wait(sec: 0.25)
     }
@@ -302,13 +302,13 @@ final class StreamPlayerTests: TestCaseModel {
         // A gap or a repeat at a buffer seam shows up as a break in the ramp, wherever it is.
         let firstBreak = (1 ..< samples.count).first { samples[$0] != samples[$0 - 1] + 1 }
 
-        #expect(firstBreak == nil, "the ramp breaks at frame \(firstBreak ?? -1) — a buffer seam dropped or repeated frames")
+        #expect(firstBreak == nil, "the ramp breaks at frame \(firstBreak ?? -1) - a buffer seam dropped or repeated frames")
     }
 
     /// The feed must stay **bounded**, not read the file as fast as it can.
     ///
     /// This is the test that was missing, and its absence froze the app. Every other test here uses
-    /// a four-second source, which the pump drains in about twenty buffers — so "keeps a second and
+    /// a four-second source, which the pump drains in about twenty buffers - so "keeps a second and
     /// a half queued ahead" and "reads the entire file immediately" produce byte-identical output
     /// and both pass. The bound only becomes observable on a source far longer than the queue, which
     /// is why a feature-length `.mkv` was the first thing to show it.
@@ -332,7 +332,7 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             readAhead <= 8192 * 16,
-            "the pump read \(readAhead) frames ahead of playback — it is draining the source, not leading it"
+            "the pump read \(readAhead) frames ahead of playback - it is draining the source, not leading it"
         )
     }
 
@@ -387,7 +387,7 @@ final class StreamPlayerTests: TestCaseModel {
 
     /// The reason `schedule` is `async`.
     ///
-    /// **Renders with no wait at all**, unlike every other test here — that is the whole assertion.
+    /// **Renders with no wait at all**, unlike every other test here - that is the whole assertion.
     /// A host calls `schedule` then `play` back to back, so if scheduling only armed a background
     /// feed the node would be started with an empty queue and the first frames out of it would be
     /// silence. Remove the prefill and this test reads zeros where the ramp should be.
@@ -445,7 +445,7 @@ final class StreamPlayerTests: TestCaseModel {
     }
 
     /// The prefill runs on the caller, so a first packet that will not decode is thrown rather than
-    /// reported — the distinction the event exists to preserve.
+    /// reported - the distinction the event exists to preserve.
     @Test func aDecodeFailureDuringThePrefillIsThrown() async throws {
         let source = RampSource()
         source.failsReadNumber = 1
@@ -470,7 +470,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// Nothing is playing, so the node consumes nothing, so the feed must park at the queue depth
     /// and stay there. The earlier version bounded its loop on a counter the completion callbacks
     /// decremented *while it ran*, which on an hour-long source meant reading all of it into memory
-    /// — 160 million frames instead of these 65,536. The count is exact rather than a ceiling
+    /// - 160 million frames instead of these 65,536. The count is exact rather than a ceiling
     /// because "roughly bounded" is what the broken version also looked like at four seconds.
     @Test func theFeedParksAtTheQueueDepthWhileNothingIsConsumed() async throws {
         let source = RampSource(frames: 44100 * 3600)
@@ -487,12 +487,12 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             source.readCount == depth,
-            "the feed read \(source.readCount) chunks with a full queue — it is draining the source, not leading it"
+            "the feed read \(source.readCount) chunks with a full queue - it is draining the source, not leading it"
         )
     }
 
     /// The other half: parking must not be stalling. Once the node takes buffers, the feed has to
-    /// wake and refill — which is what the completion handler's signal is for.
+    /// wake and refill - which is what the completion handler's signal is for.
     @Test func theFeedResumesWhenTheNodeConsumes() async throws {
         let source = RampSource(frames: 44100 * 3600)
         let rig = try await makeRig(source: source, duration: 3600)
@@ -566,7 +566,7 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             firstWrong == nil,
-            "frame \(firstWrong ?? -1) of the run played \(firstWrong.map { samples[$0] } ?? 0) — a buffer the outgoing feed read across stop() was heard"
+            "frame \(firstWrong ?? -1) of the run played \(firstWrong.map { samples[$0] } ?? 0) - a buffer the outgoing feed read across stop() was heard"
         )
     }
 
@@ -574,7 +574,7 @@ final class StreamPlayerTests: TestCaseModel {
 
     /// What a loop is made of: the same range again, after what is already queued.
     ///
-    /// Offline, which is the point — `at: nil` chaining needs no host time, and host time is
+    /// Offline, which is the point - `at: nil` chaining needs no host time, and host time is
     /// ignored in manual rendering mode. The transport's own loop path cannot be tested here.
     @Test func repeatsTheRangeInPlace() async throws {
         let rate: Double = 44100
@@ -630,7 +630,7 @@ final class StreamPlayerTests: TestCaseModel {
         #expect(samples[loopFrames] == 0, "the second pass began at \(samples[loopFrames]) rather than 0")
     }
 
-    /// A source that runs out inside the requested range ends the run rather than stalling it — a
+    /// A source that runs out inside the requested range ends the run rather than stalling it - a
     /// container states a segment length, not an audio track length, so a short read is ordinary.
     @Test func endsWhenTheSourceRunsOut() async throws {
         let source = RampSource(frames: 20000)
@@ -645,7 +645,7 @@ final class StreamPlayerTests: TestCaseModel {
 
         try #require(samples.count == 30000)
 
-        // Everything the source had, then silence — not a repeat of the last buffer.
+        // Everything the source had, then silence - not a repeat of the last buffer.
         #expect(samples[19999] == 19999)
         #expect(samples[20000] == 0)
         #expect(samples[25000] == 0)
@@ -654,7 +654,7 @@ final class StreamPlayerTests: TestCaseModel {
     /// A range the source cannot quite fill still loops.
     ///
     /// **Matroska rounds a segment's duration to its TimecodeScale**, so a losslessly coded track is
-    /// short of the declared range by up to a millisecond — frames the range asks for and the source
+    /// short of the declared range by up to a millisecond - frames the range asks for and the source
     /// does not have. Owing them left the run waiting on a read that could only return nothing, so
     /// the repeat queued behind it was never reached and playback stopped at the end of the first
     /// pass. A lossy track hides this by decoding *longer* than declared, its encoder priming
@@ -692,7 +692,7 @@ final class StreamPlayerTests: TestCaseModel {
     ///
     /// The repeat count and its frame range used to be cleared by neither `stop()` nor the next
     /// `schedule()`, so a loop queued on one run played a pass over its range once the *following*
-    /// run had drained — audio from a range the caller had moved on from.
+    /// run had drained - audio from a range the caller had moved on from.
     @Test func aQueuedRepeatDoesNotSurviveStop() async throws {
         let rate: Double = 44100
         let source = RampSource(sampleRate: rate, frames: AVAudioFramePosition(rate * 8))
@@ -749,8 +749,8 @@ final class StreamPlayerTests: TestCaseModel {
 
     // MARK: - Single consumer
 
-    /// What `TransportPlayer.restart()` does — `stop()` then `schedule()` against the **same**
-    /// source — with a read deliberately in flight across it.
+    /// What `TransportPlayer.restart()` does - `stop()` then `schedule()` against the **same**
+    /// source - with a read deliberately in flight across it.
     ///
     /// `stop()` cancels the feed task and returns; cancellation is observed, so the read is still
     /// under way. The generation fence invalidates that run's *callbacks* and reaches no further, so
@@ -772,12 +772,12 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             source.peakConcurrentCallers == 1,
-            "\(source.peakConcurrentCallers) callers were inside the source at once — the restart seeked while the outgoing feed was mid-read"
+            "\(source.peakConcurrentCallers) callers were inside the source at once - the restart seeked while the outgoing feed was mid-read"
         )
     }
 
     /// Teardown releases the source, so a read still inside it is decoding against something its
-    /// owner has let go of. Unlike the restart case there is no second *caller* to count — the
+    /// owner has let go of. Unlike the restart case there is no second *caller* to count - the
     /// question is whether the call returns while one is in flight.
     ///
     /// In the real source that read is inside `AVAssetReader.copyNextSampleBuffer()`, and what
@@ -796,7 +796,7 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             source.isInUse == false,
-            "unload() returned with a read still inside the source — the feed is decoding against a source its owner has released"
+            "unload() returned with a read still inside the source - the feed is decoding against a source its owner has released"
         )
     }
 
@@ -875,13 +875,13 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             source.peakConcurrentCallers == 1,
-            "\(source.peakConcurrentCallers) callers were inside the source at once — a repeat started a feed across the schedule wait"
+            "\(source.peakConcurrentCallers) callers were inside the source at once - a repeat started a feed across the schedule wait"
         )
     }
 
     /// A run whose whole range fits in the prefill starts no feed task of its own, so it depends on
     /// the superseded run's state having been cleared. `isFeeding` is the one field `endRun` does not
-    /// reset, and only the feed task's own trailing block clears it — which bails when the generation
+    /// reset, and only the feed task's own trailing block clears it - which bails when the generation
     /// has moved.
     ///
     /// Independent of the schedule wait: what strands the flag is a superseded task, not a race.
@@ -913,14 +913,14 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             source.seekCount == 3,
-            "the repeat never seeked back — the superseded run left isFeeding set, so enqueueRepeat refused to start a feed"
+            "the repeat never seeked back - the superseded run left isFeeding set, so enqueueRepeat refused to start a feed"
         )
     }
 
     /// Superseding a run does not take back the audio it already queued.
     ///
     /// `schedule` ends the outgoing run and fences its callbacks, but the node keeps whatever was
-    /// handed to it — only `playerNode.stop()` discards that, and `schedule` does not call it. So a
+    /// handed to it - only `playerNode.stop()` discards that, and `schedule` does not call it. So a
     /// caller that re-schedules without stopping hears the prefill of a range it has moved on from,
     /// ahead of the range it asked for.
     ///
@@ -943,12 +943,12 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             samples[0] == Float(start * rate),
-            "the run began at frame \(samples[0]) — the superseded run's buffers are still queued in the node"
+            "the run began at frame \(samples[0]) - the superseded run's buffers are still queued in the node"
         )
     }
 
     /// The wait `schedule` performs is its only suspension point, and a second `schedule` can
-    /// complete inside it — `@MainActor` serializes the calls but not across an `await`. The
+    /// complete inside it - `@MainActor` serializes the calls but not across an `await`. The
     /// superseded call must not go on to seek a source the newer one has taken.
     @Test func concurrentSchedulesDoNotOverlapOnTheSource() async throws {
         let source = ConcurrencyProbeSource()
@@ -973,7 +973,7 @@ final class StreamPlayerTests: TestCaseModel {
 
         #expect(
             source.peakConcurrentCallers == 1,
-            "\(source.peakConcurrentCallers) callers were inside the source at once — a superseded schedule seeked anyway"
+            "\(source.peakConcurrentCallers) callers were inside the source at once - a superseded schedule seeked anyway"
         )
     }
 }

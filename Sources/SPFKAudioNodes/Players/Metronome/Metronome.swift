@@ -110,7 +110,7 @@ public final class Metronome: @unchecked Sendable {
         mach_timebase_info(&timebase)
         let framesPerHostTick = sampleRate * Double(timebase.numer) / Double(timebase.denom) / 1e9
 
-        // Capture the state object and sample arrays — not `self`.
+        // Capture the state object and sample arrays - not `self`.
         let state = state
 
         // AVAudioSourceNode calls this render block on the realtime audio thread
@@ -158,7 +158,7 @@ public final class Metronome: @unchecked Sendable {
 
             let ablPointer = UnsafeMutableAudioBufferListPointer(outputData)
 
-            // Not playing — zero the buffers. The output buffers contain
+            // Not playing - zero the buffers. The output buffers contain
             // uninitialized memory, so we must write zeros explicitly;
             // setting isSilence alone is only a hint and doesn't guarantee
             // the engine will clear the buffers for us.
@@ -172,7 +172,7 @@ public final class Metronome: @unchecked Sendable {
                 return noErr
             }
 
-            // Muted — zero the buffers. The sample counter has already advanced,
+            // Muted - zero the buffers. The sample counter has already advanced,
             // so beat position stays in sync with the transport and clicks
             // resume at the correct beat when unmuted mid-playback.
             if isMuted {

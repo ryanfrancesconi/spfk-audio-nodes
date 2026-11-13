@@ -32,7 +32,7 @@ extension StreamPlayer {
     /// Stops playback and cancels the run.
     ///
     /// **Returns without waiting for the feed task**, so a decode already inside the source may
-    /// still be running when it does — deliberately, because this is on the playback path and must
+    /// still be running when it does - deliberately, because this is on the playback path and must
     /// not block. Everything that goes on to touch the source waits instead:
     /// ``schedule(from:to:audioTime:onComplete:)`` before it seeks, ``unload()`` and ``load(source:url:duration:)``
     /// before they release or replace it.
@@ -40,11 +40,11 @@ extension StreamPlayer {
         // **Cancelled before the `isPlaying` guard, not after.** A run is armed by `schedule` and
         // starts feeding immediately, so a player that was scheduled but never played still has a
         // task decoding and calling `scheduleBuffer`. Returning early there left it running while
-        // the host tore the graph down to load the next file — which crashes inside the engine, and
+        // the host tore the graph down to load the next file - which crashes inside the engine, and
         // looks like a fault in whatever was loaded next rather than in what was left behind.
         //
         // **The handle is kept, not cleared.** Cancelling does not end a read already inside the
-        // source, and the next `schedule` is what waits for it — dropping the handle here leaves it
+        // source, and the next `schedule` is what waits for it - dropping the handle here leaves it
         // nothing to wait on, which is the restart race with the fix apparently applied.
         feedTask?.cancel()
 
@@ -69,7 +69,7 @@ extension StreamPlayer {
 
     /// Fences the current run's callbacks and releases the feed task if it is waiting.
     ///
-    /// `AsyncStream.next()` does return nil on cancellation — measured, not assumed — so the task
+    /// `AsyncStream.next()` does return nil on cancellation - measured, not assumed - so the task
     /// wakes from `feedTask?.cancel()` alone. Finishing here covers the path that has no
     /// cancellation to rely on: `schedule` supersedes a run while its task may still be observing
     /// the old generation, and a continuation left live would keep the loop parked on a stream

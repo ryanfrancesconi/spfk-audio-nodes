@@ -97,7 +97,7 @@ extension StreamPlayer {
         // seeks. **Cancelling is not enough**: cancellation is observed, and a read already inside
         // the decoder stays there until it returns. The generation fence makes that run's callbacks
         // inert but cannot reach a decode under way, so a seek here would rebuild the reader another
-        // thread is pulling sample buffers from — a source that permits one consumer, driven by two.
+        // thread is pulling sample buffers from - a source that permits one consumer, driven by two.
         // Left in place rather than cleared: a second `schedule` landing during the wait below has to
         // find the same task and wait for it too, and `startFeeding` replaces the handle anyway.
         let outgoing = feedTask
@@ -118,7 +118,7 @@ extension StreamPlayer {
         // check, or wakes from the finished signal.
         await outgoing?.value
 
-        // The only suspension point on this path, so a second `schedule` can complete inside it —
+        // The only suspension point on this path, so a second `schedule` can complete inside it -
         // `TransportPlayer` is `@MainActor`, which serializes the calls but not across an `await`.
         // That call has already taken the source; carrying on would seek underneath it, which is the
         // two-consumer bug this wait exists to prevent.

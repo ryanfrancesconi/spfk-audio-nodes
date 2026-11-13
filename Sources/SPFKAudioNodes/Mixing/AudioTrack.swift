@@ -6,7 +6,7 @@ import SPFKBase
 
 /// A track containing a mixer input, channel gain output, and an effects chain.
 ///
-/// Isolated to `@MainActor` — all access originates from `@MainActor AudioWorkspace`.
+/// Isolated to `@MainActor` - all access originates from `@MainActor AudioWorkspace`.
 /// Protocol conformances to `AudioUnitChainDelegate` and `AudioEngineNode` use
 /// `@preconcurrency` because those protocols aren't `@MainActor`-qualified and
 /// delegate callbacks arrive from the `AudioUnitChain` actor. `AVAudioNode`

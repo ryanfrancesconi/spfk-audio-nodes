@@ -38,7 +38,7 @@ public final class TransportValidationAU: AUAudioUnit, @unchecked Sendable {
     )
 
     /// Most-recent values read from the host blocks. Written on the render thread; read on the main
-    /// thread by the inspector UI. The race is benign — the UI reads stale values at worst.
+    /// thread by the inspector UI. The race is benign - the UI reads stale values at worst.
     nonisolated(unsafe) public var snapshot = TransportSnapshot()
 
     private var _inputBusses: AUAudioUnitBusArray!

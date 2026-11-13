@@ -11,7 +11,7 @@ extension StreamPlayer {
 
     /// Frames per scheduled buffer.
     ///
-    /// Read cost per trip against how finely playback can be stopped — the node keeps whole buffers,
+    /// Read cost per trip against how finely playback can be stopped - the node keeps whole buffers,
     /// so this is also the granularity at which a range end can land.
     static let chunkFrames: AVAudioFrameCount = 8192
 
@@ -26,7 +26,7 @@ extension StreamPlayer {
     ///
     /// The reason that method is `async`. A host calls `schedule` and then `play` back to back, so
     /// if scheduling only *armed* a background feed the node could be told to start with nothing in
-    /// its queue — it would render silence until the first buffer landed, and that buffer carries
+    /// its queue - it would render silence until the first buffer landed, and that buffer carries
     /// the run's start time, so it would be stamped with a moment already past. Awaiting a prefill
     /// makes "scheduled" mean the audio is there, which is what the caller already assumed.
     static let prefillBuffers = 2
@@ -63,7 +63,7 @@ extension StreamPlayer {
         /// Fences the current run's callbacks and drops everything scoped to it.
         ///
         /// Both `schedule` and `stop` end a run and differ only in what replaces the signal, so
-        /// this is one definition rather than two blocks that have to be kept in step — the
+        /// this is one definition rather than two blocks that have to be kept in step - the
         /// queued repeats used to be cleared by neither, and survived into the following run.
         ///
         /// - Returns: the new generation.
@@ -79,7 +79,7 @@ extension StreamPlayer {
             repeatRangeFrames = 0
 
             // The outgoing task clears this only for its own generation, which has just moved, so
-            // a superseded run would otherwise leave it set with nothing feeding — and
+            // a superseded run would otherwise leave it set with nothing feeding - and
             // `enqueueRepeat` refuses to start a feed while it is.
             isFeeding = false
 
@@ -117,13 +117,13 @@ extension StreamPlayer {
     /// until the range is spent.
     ///
     /// **Bounded by waiting, not by counting.** The loop hands back its thread whenever the node's
-    /// queue is full, so it cannot spin — and it cannot run away either. An earlier version looped
+    /// queue is full, so it cannot spin - and it cannot run away either. An earlier version looped
     /// on `buffersInFlight < target` alone, which the consumption callbacks decrement *while the
     /// loop is running*: the ceiling moved out from under it and one call read the entire file,
     /// allocating a buffer per 8192 frames. On a four-second fixture that drains in twenty buffers
     /// and is indistinguishable from correct behavior; on a feature film it froze the app.
     ///
-    /// One task per run, so the source has exactly one consumer — the guarantee a serial queue used
+    /// One task per run, so the source has exactly one consumer - the guarantee a serial queue used
     /// to provide, now held by construction and cancellable with it.
     private func feed(_ run: Run, signals: AsyncStream<Void>) async {
         var consumptions = signals.makeAsyncIterator()
@@ -155,7 +155,7 @@ extension StreamPlayer {
             }
 
             guard state.buffersInFlight < Self.targetBuffersInFlight else {
-                // The node has all the lead it wants. Wait for it to say it took one — the stream
+                // The node has all the lead it wants. Wait for it to say it took one - the stream
                 // finishes on stop, so this cannot outlive the run.
                 guard await consumptions.next() != nil else { return }
                 continue
@@ -165,7 +165,7 @@ extension StreamPlayer {
                 guard try scheduleNextBuffer(run) else { return }
 
             } catch {
-                // Minutes into a file, with the caller long since returned from `schedule` — the
+                // Minutes into a file, with the caller long since returned from `schedule` - the
                 // only way to say so is the event handler.
                 run.signal.finish()
                 eventHandler?(.failed(error))
@@ -176,7 +176,7 @@ extension StreamPlayer {
 
     /// Decodes one chunk and hands it to the node.
     ///
-    /// - Returns: `false` when the run is finished — either the range is spent or the source ended
+    /// - Returns: `false` when the run is finished - either the range is spent or the source ended
     ///   inside it, which is ordinary: a container states a segment length, not a track length.
     ///
     /// The one place a buffer is created and scheduled, so the prefill on the caller's thread and
@@ -206,7 +206,7 @@ extension StreamPlayer {
 
         // A short read is the source ending inside the declared range: Matroska rounds a segment
         // duration to its TimecodeScale, so a lossless track falls short of it by up to a
-        // millisecond. Without this the last buffer never counts as last — its completion does not
+        // millisecond. Without this the last buffer never counts as last - its completion does not
         // fire, and a queued repeat is never taken.
         if written < wanted {
             framesRemaining = 0
@@ -228,8 +228,8 @@ extension StreamPlayer {
             let onComplete = run.onComplete
 
             // **Captures the lock, not the player.** A completion handler runs on the node's own
-            // serial callback queue, and a strong reference taken there — including the transient
-            // one `guard let self` or `self?.` creates — can be the last one: releasing it
+            // serial callback queue, and a strong reference taken there - including the transient
+            // one `guard let self` or `self?.` creates - can be the last one: releasing it
             // deallocates the `AVAudioPlayerNode` from inside its own callback, and that dealloc's
             // `Stop` dispatches synchronously to the queue it is already on. `feedState` is a
             // `Sendable` value that fences the run on its own, so nothing here needs the player.

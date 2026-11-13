@@ -157,7 +157,7 @@ final class TimePitchPullTests: TestCaseModel {
     /// After a rate change, every click pulled once the ramp is over lands where a step to the new
     /// rate at `rateChangeDelay` after the change puts it. Only at rates where a click survives the
     /// stretch as a sharp peak: elsewhere peak-picking alone moves a click by up to ~60 frames, with
-    /// no change at all. Measured within 2 frames, except 2× → 0.5×, which lands a constant 24–26
+    /// no change at all. Measured within 2 frames, except 2× → 0.5×, which lands a constant 24-26
     /// frames late; the bound is that.
     @Test(arguments: [(1, 0.5), (1, 2), (0.5, 2), (2, 0.5)] as [(Double, Double)])
     func rateChangeLandsAtItsDelay(from oldRate: Double, to newRate: Double) async throws {

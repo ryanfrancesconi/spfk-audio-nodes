@@ -6,18 +6,18 @@ import SPFKAUHost
 /// What a transport needs from the thing it is playing, so that it does not need to know whether
 /// the audio came out of a file or a stream.
 ///
-/// Two conformers, and the split is exactly one question — can `AVAudioFile` open it:
+/// Two conformers, and the split is exactly one question - can `AVAudioFile` open it:
 /// ``FilePlayer`` schedules segments of a file, ``StreamPlayer`` schedules buffers pulled from a
-/// decoder. **Both drive an `AVAudioPlayerNode`**, so everything below the seam — the sample-accurate
-/// `AVAudioTime` start, the `playerTime(forNodeTime:)` playhead, the completion callbacks — is the
+/// decoder. **Both drive an `AVAudioPlayerNode`**, so everything below the seam - the sample-accurate
+/// `AVAudioTime` start, the `playerTime(forNodeTime:)` playhead, the completion callbacks - is the
 /// same machinery rather than two implementations of it.
 ///
 /// Deliberately narrow. It is the surface `TransportPlayer` already used against `FilePlayer` and
 /// not a general player abstraction; anything wider would have to be honored twice.
 /// `Sendable` because scheduling suspends, so a `@MainActor` host holding one as an existential has
 /// to be able to carry it across that suspension. Both conformers already declare
-/// `@unchecked Sendable` on the same terms — access is serial, one context drives a player at a
-/// time — so this states on the protocol what both types had stated separately.
+/// `@unchecked Sendable` on the same terms - access is serial, one context drives a player at a
+/// time - so this states on the protocol what both types had stated separately.
 public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
     /// What is loaded, for a host that identifies a loaded player by file.
     var url: URL? { get }
@@ -27,7 +27,7 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
 
     var isLoaded: Bool { get }
 
-    /// Whether audio is actually being produced — false once the engine stops, however it stopped.
+    /// Whether audio is actually being produced - false once the engine stops, however it stopped.
     var isPlaying: Bool { get }
 
     /// Told to play and not since stopped, whatever the engine is doing.
@@ -48,7 +48,7 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
 
     var currentTime: TimeInterval? { get }
 
-    /// The portion of the source to play — the trim or loop window, not the whole file.
+    /// The portion of the source to play - the trim or loop window, not the whole file.
     var playbackRange: ClosedRange<TimeInterval>? { get }
 
     func updateTimeRange(from startingTime: TimeInterval?, to endingTime: TimeInterval?) throws
@@ -80,7 +80,7 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
     /// Queues a pass over `startingTime...endingTime`, after whatever is already scheduled.
     ///
     /// How a loop iterates. `AVAudioPlayerNode` plays a command with no time immediately after the
-    /// last one, so neither conformer has to time anything against a clock — which is also why this
+    /// last one, so neither conformer has to time anything against a clock - which is also why this
     /// works in manual rendering mode, where host time is ignored.
     ///
     /// **The range is stated rather than reused**: playback can begin inside a loop, and that first
@@ -95,7 +95,7 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
 
     /// Starts the scheduled run at `startTime`, a node time; nil starts it now.
     ///
-    /// A run scheduled at player sample 0 then started here begins exactly on `startTime` —
+    /// A run scheduled at player sample 0 then started here begins exactly on `startTime` -
     /// measured to the frame, in real time with a sample or a host time and offline with a sample.
     /// A time already past starts it at once, dropping what it should have played.
     func play(at startTime: AVAudioTime?) throws
@@ -105,7 +105,7 @@ public protocol TransportSourcePlayer: AudioEngineNode, Mixable, Sendable {
     /// Releases what is loaded and everything reading it.
     ///
     /// **`async` for the same conformer `schedule` is async for.** ``StreamPlayer`` owns a feed task
-    /// that may be inside a blocking decode, and only awaiting it ends that read — `stop()` cancels,
+    /// that may be inside a blocking decode, and only awaiting it ends that read - `stop()` cancels,
     /// which is observed rather than immediate. ``FilePlayer`` has nothing in flight and satisfies
     /// this with its synchronous body unchanged.
     func unload() async

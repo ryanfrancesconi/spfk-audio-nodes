@@ -11,7 +11,7 @@ import SPFKBase
 /// The sibling of ``FilePlayer``, and **deliberately the same node underneath**: both drive one
 /// `AVAudioPlayerNode`, where `scheduleBuffer` and `scheduleSegment` are two ways to feed its single
 /// queue. So a host gets the same sample-accurate `AVAudioTime` start, the same
-/// `playerTime(forNodeTime:)` playhead and the same completion callbacks whichever one it holds —
+/// `playerTime(forNodeTime:)` playhead and the same completion callbacks whichever one it holds -
 /// which is what makes a second source type tractable rather than a second transport.
 ///
 /// **Nothing here runs on the render thread.** Frames are decoded and scheduled ahead of time by a
@@ -33,7 +33,7 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// The one thing driving the source.
     ///
     /// A single task rather than a serial queue: it gives the same "exactly one consumer" guarantee
-    /// the decoder needs — by construction, since only one exists at a time — and it is cancellable,
+    /// the decoder needs - by construction, since only one exists at a time - and it is cancellable,
     /// which a queue is not. `stop` and `schedule` cancel it rather than racing it.
     var feedTask: Task<Void, Never>?
 
@@ -48,7 +48,7 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// Frames of the current range still to be scheduled. Touched only by the feed task.
     var framesRemaining: AVAudioFramePosition = 0
 
-    /// The current run's start time, until the first buffer takes it — after which the rest queue
+    /// The current run's start time, until the first buffer takes it - after which the rest queue
     /// behind with `at: nil`.
     ///
     /// Held here rather than captured by the feed task because `AVAudioTime` is not `Sendable`, and
@@ -59,7 +59,7 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 
     /// Reports a failure that happens *after* scheduling returned.
     ///
-    /// ``FilePlayer`` cannot fail this way — it hands the whole segment to the node and any problem
+    /// ``FilePlayer`` cannot fail this way - it hands the whole segment to the node and any problem
     /// is thrown from `schedule`. A stream is decoded as it plays, so a packet can fail minutes in,
     /// and without this the feed would simply stop: playback goes silent, the playhead keeps
     /// running, and nothing is told. One handler rather than a `failureHandler`/`stallHandler` pair
@@ -70,7 +70,7 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 
     // MARK: - Loaded source
 
-    /// Cached at load so the caller can ask about the source without touching it — it belongs to
+    /// Cached at load so the caller can ask about the source without touching it - it belongs to
     /// the feed queue.
     public internal(set) var url: URL?
 
@@ -105,7 +105,7 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
 
     /// - Returns: The current frame while playing, or nil if unavailable.
     ///
-    /// The same derivation as ``FilePlayer/currentFrame`` because it is the same node — the playhead
+    /// The same derivation as ``FilePlayer/currentFrame`` because it is the same node - the playhead
     /// does not know how the queue was filled.
     public var currentFrame: AVAudioFramePosition? {
         guard let engine,
@@ -145,7 +145,7 @@ open class StreamPlayer: AudioEngineNodeAU, Mixable, @unchecked Sendable {
     /// Supersedes the run, so a handler that outlives the player cannot deliver its `onComplete`.
     ///
     /// The node does outlive it whenever an engine still holds it: the queued buffers are destroyed
-    /// later, and destroying them calls the handlers — which hold the generation rather than the
+    /// later, and destroying them calls the handlers - which hold the generation rather than the
     /// player. ``FilePlayer`` fences the same ordering, and its completion suite pins the behavior.
     deinit {
         feedState.withLock { _ = $0.endRun(replacingSignalWith: nil) }

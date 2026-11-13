@@ -12,7 +12,7 @@ extension StreamPlayer {
     /// Takes ownership of `source`.
     ///
     /// - Parameters:
-    ///   - source: the stream to play. Handed over rather than shared — it holds a file position,
+    ///   - source: the stream to play. Handed over rather than shared - it holds a file position,
     ///     so the feed queue must be the only thing driving it from here on.
     ///   - url: what the source is reading, for a caller that identifies a loaded player by file.
     ///   - duration: the source's length. Taken as a parameter because a container states it in its
@@ -25,7 +25,7 @@ extension StreamPlayer {
         stop()
 
         // Cancelling does not end the read the task is inside, and everything below is state that
-        // read is still using — `processingFormat` and `source` most of all. Bounded by one chunk.
+        // read is still using - `processingFormat` and `source` most of all. Bounded by one chunk.
         await feedTask?.value
         feedTask = nil
 
@@ -34,7 +34,7 @@ extension StreamPlayer {
         }
 
         // A player node renders one format for its lifetime, so a source of a different format
-        // needs a different player — the same rule `FilePlayer` states.
+        // needs a different player - the same rule `FilePlayer` states.
         if let processingFormat, processingFormat != source.processingFormat {
             let message = "Processing format doesn't match. This source is a different format than the previously loaded one. " +
                 "You should make a new StreamPlayer instance and reconnect."
@@ -54,7 +54,7 @@ extension StreamPlayer {
     /// Releases the source, once nothing is reading it.
     ///
     /// **`async` because the wait is the point.** `stop()` cancels the feed task and returns, and a
-    /// read already inside the decoder stays there until it returns — so a synchronous teardown
+    /// read already inside the decoder stays there until it returns - so a synchronous teardown
     /// hands the source back, reassigns ``processingFormat``/``framesRemaining``/``runAnchor`` and
     /// detaches the node while that read is still running. Awaiting the task is what makes
     /// "unloaded" mean nothing is in flight. Bounded by one chunk decode.

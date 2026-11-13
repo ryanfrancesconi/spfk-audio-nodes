@@ -10,7 +10,7 @@ import Testing
 @testable import SPFKAudioNodes
 
 /// `enqueueRepeat` has to answer the same way on both conformers of ``TransportSourcePlayer``, and
-/// the range it is given is not the player's range — a run can begin inside a loop.
+/// the range it is given is not the player's range - a run can begin inside a loop.
 @Suite(.tags(.engine), .serialized)
 final class FilePlayerRepeatTests: TestCaseModel {
     private let sampleRate = FilePlayerTestSupport.sampleRate
@@ -94,7 +94,7 @@ final class FilePlayerRepeatTests: TestCaseModel {
         try? FileManager.default.removeItem(at: url)
     }
 
-    /// With no arguments a repeat plays the range again — not the whole file.
+    /// With no arguments a repeat plays the range again - not the whole file.
     @Test func repeatWithNoArgumentsKeepsTheTrimmedRange() async throws {
         let url = try FilePlayerTestSupport.makeStepFile(seconds: 4)
         let rig = try makeRig(url: url)

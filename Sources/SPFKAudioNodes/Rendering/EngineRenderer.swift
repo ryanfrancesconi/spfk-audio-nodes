@@ -32,10 +32,10 @@ public actor EngineRenderer {
     /// Rendering configuration (frame count, silence detection, tail behavior).
     var options: EngineRendererOptions = .init()
 
-    /// Called before the render loop begins — typically starts playback on player nodes.
+    /// Called before the render loop begins - typically starts playback on player nodes.
     var prerender: (@Sendable () throws -> Void)?
 
-    /// Called after the main render loop completes — typically stops player nodes.
+    /// Called after the main render loop completes - typically stops player nodes.
     var postrender: (@Sendable () throws -> Void)?
 
     /// Called periodically with a `0.0...1.0` progress value during rendering.
@@ -49,7 +49,7 @@ public actor EngineRenderer {
         engine.outputNode.auAudioUnit.maximumFramesToRender
     }
 
-    /// The PCM format used for rendering — prefers the audio file's processing format,
+    /// The PCM format used for rendering - prefers the audio file's processing format,
     /// falling back to the engine's manual rendering format.
     var manualRenderingFormat: AVAudioFormat {
         audioFile?.processingFormat ?? engine.manualRenderingFormat
@@ -67,8 +67,8 @@ extension EngineRenderer {
     ///   - audioFile: The destination file to write rendered audio into.
     ///   - duration: Length of audio to render (in seconds). Must be positive.
     ///   - options: Rendering configuration (frame count, silence tail detection).
-    ///   - prerender: Called before the render loop — typically starts player nodes.
-    ///   - postrender: Called after the main render loop — typically stops player nodes.
+    ///   - prerender: Called before the render loop - typically starts player nodes.
+    ///   - postrender: Called after the main render loop - typically stops player nodes.
     ///   - progressHandler: Called periodically with a `0.0...1.0` progress value.
     ///   - disableManualRenderingModeOnCompletion: Whether to exit manual rendering mode when done.
     public func render(
@@ -102,8 +102,8 @@ extension EngineRenderer {
     ///   - settings: Audio file settings dictionary (e.g. sample rate, bit depth, format).
     ///   - duration: Length of audio to render (in seconds).
     ///   - options: Rendering configuration (frame count, silence tail detection).
-    ///   - prerender: Called before the render loop — typically starts player nodes.
-    ///   - postrender: Called after the main render loop — typically stops player nodes.
+    ///   - prerender: Called before the render loop - typically starts player nodes.
+    ///   - postrender: Called after the main render loop - typically stops player nodes.
     ///   - progressHandler: Called periodically with a `0.0...1.0` progress value.
     ///   - disableManualRenderingModeOnCompletion: Whether to exit manual rendering mode when done.
     public func render(

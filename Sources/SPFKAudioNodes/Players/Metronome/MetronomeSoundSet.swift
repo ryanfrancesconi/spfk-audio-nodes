@@ -5,8 +5,8 @@ import SPFKBase
 
 /// A set of click samples for use with ``Metronome``.
 ///
-/// Each sound set contains three samples — bar (downbeat accent), beat, and
-/// subdivision — loaded as `AVAudioPCMBuffer` in the standard processing format
+/// Each sound set contains three samples - bar (downbeat accent), beat, and
+/// subdivision - loaded as `AVAudioPCMBuffer` in the standard processing format
 /// (Float32, deinterleaved).
 public struct MetronomeSoundSet: @unchecked Sendable {
     /// The accented downbeat click (first beat of each measure).

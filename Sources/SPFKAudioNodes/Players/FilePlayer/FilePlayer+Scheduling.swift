@@ -48,7 +48,7 @@ extension FilePlayer {
     /// is repeated segments rather than segments timed against a clock.
     /// **A repeat states its range rather than redefining the player's.** `playbackRange` is what
     /// the run plays and what `currentTime` is measured against; a loop pass is a separate span, and
-    /// folding the two together moved the playhead's origin and — called with no arguments — reset
+    /// folding the two together moved the playhead's origin and - called with no arguments - reset
     /// the range to the whole file, so a trimmed player looped everything. ``StreamPlayer`` states
     /// it this way, and the protocol requires the two to answer alike.
     public func enqueueRepeat(
@@ -80,7 +80,7 @@ extension FilePlayer {
             throw NSError(file: #file, function: #function, description: "No audio file is loaded")
         }
 
-        // A repeat carries no time — it queues behind what is already scheduled — so it must not
+        // A repeat carries no time - it queues behind what is already scheduled - so it must not
         // clear the run's start time and report the player as unscheduled, and it belongs to the
         // run it repeats rather than starting one.
         if let audioTime {
@@ -115,7 +115,7 @@ extension FilePlayer {
             at: audioTime,
             completionCallbackType: .dataPlayedBack,
             // **Captures the fence, not the player.** A strong reference taken inside a completion
-            // handler — including the transient one `guard let self` creates — can be the last one,
+            // handler - including the transient one `guard let self` creates - can be the last one,
             // and releasing it deallocates the node from inside its own callback queue, where the
             // dealloc's `Stop` dispatches synchronously to that same queue. The run answers what the
             // armed latch used to: `stop()` and a superseding `schedule` both bump it before the
