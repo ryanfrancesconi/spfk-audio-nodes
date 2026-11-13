@@ -976,4 +976,44 @@ final class StreamPlayerTests: TestCaseModel {
             "\(source.peakConcurrentCallers) callers were inside the source at once - a superseded schedule seeked anyway"
         )
     }
+
+    /// The prefill's seek and reads suspend, so a second `schedule` can arrive while the first is
+    /// still inside the source with no feed task yet started. It has to wait that prefill out too.
+    @Test func aScheduleLandingDuringAnotherPrefillDoesNotOverlapOnTheSource() async throws {
+        let source = ConcurrencyProbeSource()
+        let rig = try await makeRig(source: source, duration: 3600)
+        let player = rig.player
+
+        async let first: Void = player.schedule(from: 0, to: 3600)
+
+        // Nothing was scheduled before, so a call in flight is the first schedule's prefill.
+        try await wait(for: source.isInUse, timeout: 5)
+
+        async let second: Void = player.schedule(from: 10, to: 3600)
+
+        _ = try? await first
+        _ = try? await second
+
+        #expect(
+            source.peakConcurrentCallers == 1,
+            "\(source.peakConcurrentCallers) callers were inside the source at once - a schedule seeked under another's prefill"
+        )
+    }
+
+    /// `unload` releases the source, and a prefill is a read against it like any other.
+    @Test func unloadDoesNotReturnWhileAPrefillIsInFlight() async throws {
+        let source = ConcurrencyProbeSource()
+        let rig = try await makeRig(source: source, duration: 3600)
+        let player = rig.player
+
+        async let scheduled: Void = player.schedule(from: 0, to: 3600)
+
+        try await wait(for: source.isInUse, timeout: 5)
+
+        await player.unload()
+
+        #expect(source.isInUse == false, "unload() returned with the prefill still inside the source")
+
+        _ = try? await scheduled
+    }
 }

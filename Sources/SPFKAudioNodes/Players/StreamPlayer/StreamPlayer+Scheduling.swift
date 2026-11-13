@@ -118,7 +118,7 @@ extension StreamPlayer {
         // check, or wakes from the finished signal.
         await outgoing?.value
 
-        // The only suspension point on this path, so a second `schedule` can complete inside it -
+        // A second `schedule` can complete inside this suspension -
         // `TransportPlayer` is `@MainActor`, which serializes the calls but not across an `await`.
         // That call has already taken the source; carrying on would seek underneath it, which is the
         // two-consumer bug this wait exists to prevent.
@@ -136,22 +136,48 @@ extension StreamPlayer {
         currentRun = run
         currentSignals = signals
 
-        // Both on the caller, so a bad seek or an undecodable first packet is *thrown* from
-        // `schedule` rather than reported to `eventHandler` after the fact. Everything the caller
-        // could still act on should fail this way.
-        try source.seek(toFrame: startFrame)
-
-        framesRemaining = rangeFrames
         runAnchor = audioTime
 
-        for _ in 0 ..< Self.prefillBuffers {
-            guard try scheduleNextBuffer(run) else { break }
+        // Awaited here, so a bad seek or an undecodable first packet is *thrown* from `schedule`
+        // rather than reported to `eventHandler` after the fact. Everything the caller could still
+        // act on should fail this way.
+        //
+        // A task rather than inline: the seek and the reads suspend, and `feedTask` is what a later
+        // `schedule`, `load` or `unload` waits on before touching the source. Without a handle
+        // there, one landing during the prefill would seek underneath it.
+        let prefill = Task(priority: .userInitiated) { [weak self] () throws -> Bool in
+            guard let self else { return false }
+
+            return try await self.seekAndPrefill(run, from: startFrame, frames: rangeFrames)
+        }
+
+        feedTask = Task { _ = await prefill.result }
+
+        let hasMoreToFeed = try await prefill.value
+
+        guard feedState.withLock({ $0.generation }) == generation else {
+            throw NSError(file: #file, function: #function, description: "Superseded by a later schedule")
         }
 
         // The whole range fit in the prefill, so there is nothing left to feed.
-        guard framesRemaining > 0 else { return }
+        guard hasMoreToFeed else { return }
 
         startFeeding(run, signals: signals)
+    }
+
+    /// Seeks to the run's start and queues its first ``prefillBuffers``.
+    ///
+    /// - Returns: whether frames of the range remain for the feed task.
+    private func seekAndPrefill(_ run: Run, from startFrame: AVAudioFramePosition, frames: AVAudioFramePosition) async throws -> Bool {
+        try await run.source.seek(toFrame: startFrame)
+
+        framesRemaining = frames
+
+        for _ in 0 ..< Self.prefillBuffers {
+            guard try await scheduleNextBuffer(run) else { break }
+        }
+
+        return framesRemaining > 0
     }
 
     /// Queues another pass over the current range, after whatever is already scheduled.

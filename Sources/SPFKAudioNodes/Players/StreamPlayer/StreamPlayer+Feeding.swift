@@ -144,7 +144,7 @@ extension StreamPlayer {
                 guard let (repeatStart, repeatFrames) = next else { return }
 
                 do {
-                    try run.source.seek(toFrame: repeatStart)
+                    try await run.source.seek(toFrame: repeatStart)
                 } catch {
                     run.signal.finish()
                     eventHandler?(.failed(error))
@@ -162,7 +162,7 @@ extension StreamPlayer {
             }
 
             do {
-                guard try scheduleNextBuffer(run) else { return }
+                guard try await scheduleNextBuffer(run) else { return }
 
             } catch {
                 // Minutes into a file, with the caller long since returned from `schedule` - the
@@ -179,11 +179,14 @@ extension StreamPlayer {
     /// - Returns: `false` when the run is finished - either the range is spent or the source ended
     ///   inside it, which is ordinary: a container states a segment length, not a track length.
     ///
-    /// The one place a buffer is created and scheduled, so the prefill on the caller's thread and
-    /// the feed task cannot drift apart in how they count frames or stamp the anchor. They never
-    /// run at the same time: the task is only started once the prefill has returned.
+    /// The one place a buffer is created and scheduled, so the prefill and the feed task cannot
+    /// drift apart in how they count frames or stamp the anchor. They never run at the same time:
+    /// the feed is only started once the prefill has returned.
+    ///
+    /// The read suspends, and a run superseded across it schedules nothing: its buffer belongs to
+    /// a range the node has moved on from.
     @discardableResult
-    func scheduleNextBuffer(_ run: Run) throws -> Bool {
+    func scheduleNextBuffer(_ run: Run) async throws -> Bool {
         guard let format = processingFormat, framesRemaining > 0 else { return false }
 
         let wanted = AVAudioFrameCount(min(framesRemaining, AVAudioFramePosition(Self.chunkFrames)))
@@ -192,7 +195,9 @@ extension StreamPlayer {
             throw NSError(file: #file, function: #function, description: "Could not allocate a \(wanted) frame buffer")
         }
 
-        let written = try run.source.readNextChunk(into: buffer, frameCount: wanted)
+        let written = try await run.source.readNextChunk(into: buffer, frameCount: wanted)
+
+        guard feedState.withLock({ $0.generation }) == run.generation else { return false }
 
         guard written > 0 else {
             // The source ended on a buffer boundary, so the short read below never came. Nothing to
